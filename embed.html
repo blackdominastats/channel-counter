@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Subscriber Counter Embed</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/themes/odometer-theme-minimal.min.css">
+<style>
+:root{color-scheme:dark;--fg:#fff;--muted:rgba(255,255,255,.72);--panel:rgba(30,41,59,.92);--border:rgba(148,163,184,.25);--weight:300}
+*{box-sizing:border-box}
+html,body{margin:0;min-width:0;min-height:0;background:transparent!important}
+body{padding:6px;color:var(--fg);font:14px/1.3 Roboto,Arial,sans-serif;overflow:hidden}
+#counter{display:flex;align-items:center;gap:12px;width:max-content;max-width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel);color:var(--fg)}
+#counter.transparent{background:transparent;border-color:transparent}
+#counter.light{color:#111827;background:rgba(248,250,252,.94);border-color:rgba(15,23,42,.15)}
+#avatar{width:58px;height:58px;flex:0 0 58px;object-fit:cover;border-radius:50%;background:rgba(148,163,184,.2)}
+#content{min-width:0;display:flex;flex-direction:column;gap:2px}
+#name{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(70vw,440px)}
+#count{font-size:clamp(34px,7vw,58px);font-weight:var(--weight);line-height:1;letter-spacing:-1px;white-space:nowrap}
+#rate{font-size:12px;color:var(--muted);white-space:nowrap}
+#counter.light #rate{color:#475569}
+#status{font:12px/1.35 Arial,sans-serif;color:var(--muted);padding:3px 4px;max-width:360px}
+#counter.wide #avatar{display:none}
+#counter.wide #count{font-size:clamp(38px,8vw,68px)}
+#counter.small #avatar{width:42px;height:42px;flex-basis:42px}
+#counter.small #count{font-size:clamp(30px,6vw,46px)}
+.odometer,.odometer-inside,.odometer-digit,.odometer-digit-inner,.odometer-ribbon-inner{line-height:1!important}
+.odometer-digit{height:1em!important;vertical-align:baseline!important}
+.odometer-formatting-mark{display:inline-block!important;line-height:1!important;height:auto!important;vertical-align:baseline!important;position:relative!important;top:-.08em!important}
+@media(prefers-reduced-motion:reduce){.odometer .odometer-ribbon-inner{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="counter" class="small"><img id="avatar" alt=""><div id="content"><div id="name">Loading channel…</div><div id="count">—</div><div id="rate"></div></div></div>
+<div id="status" role="status" aria-live="polite"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/odometer.min.js"></script>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+const params=new URLSearchParams(location.search);
+const channelId=(params.get('channel')||params.get('id')||'').match(/UC[a-zA-Z0-9_-]{20,}/)?.[0]||'';
+const MIXERNO='https://mixerno.space/api/youtube-channel-counter';
+const NEXTCOUNTS='https://api.nextcounts.com';
+const FIREBASE='https://channel-counter-d7a71-default-rtdb.firebaseio.com';
+const counter=$('counter');
+const settings={type:['small','wide','card'].includes(params.get('type'))?params.get('type'):'small',theme:params.get('theme')||'dark',opacity:Math.max(0,Math.min(100,Number(params.get('opacity')??100))),weight:Math.max(100,Math.min(900,Number(params.get('weight')||300)))};
+counter.classList.add(settings.type);
+counter.style.setProperty('--weight',settings.weight);
+if(settings.theme==='transparent'||settings.opacity===0)counter.classList.add('transparent');
+else if(settings.theme==='light')counter.classList.add('light');
+else counter.style.backgroundColor='rgba(30,41,59,'+(settings.opacity/100)+')';
+if(params.get('avatar')==='0')$('avatar').hidden=true;
+if(params.get('name')==='0')$('name').hidden=true;
+let odometer=null,currentCount=null,lastSample=null,ratePerHour=null,refreshTimer=null,refreshing=false,channelName=params.get('channelName')||'',avatarUrl=params.get('avatarUrl')||'';
+const fmt=n=>Math.round(n).toLocaleString('en-US');
+function setCount(value){
+ if(!Number.isFinite(value)||value<0)return;
+ if(!window.Odometer){$('count').textContent=fmt(value);return}
+ if(!odometer){$('count').textContent=String(Math.round(value));odometer=new Odometer({el:$('count'),value:Math.round(value),format:'(,ddd)',theme:'minimal',duration:2000});}
+ else odometer.update(Math.round(value));
+}
+function parseCount(value){
+ if(typeof value==='number')return Number.isFinite(value)&&value>=0?Math.round(value):0;
+ if(value==null)return 0;
+ const s=String(value).trim().replace(/,/g,'').replace(/\s/g,'');
+ const m=s.match(/^([\d.]+)([KMB])?$/i);if(!m)return 0;
+ return Math.round(Number(m[1])*({K:1e3,M:1e6,B:1e9}[(m[2]||'').toUpperCase()]||1));
+}
+function pick(objects,paths,fallback=''){
+ for(const obj of objects)for(const path of paths){const value=path.split('.').reduce((v,k)=>v==null?undefined:v[k],obj);if(value!==undefined&&value!==null&&value!==''){const result=value&&typeof value==='object'&&'count'in value?value.count:value;if(result!==undefined&&result!==null&&result!=='')return result}}
+ return fallback;
+}
+async function getJson(url){
+ const response=await fetch(url,{cache:'no-store',headers:{Accept:'application/json','Cache-Control':'no-cache'}});
+ if(!response.ok)throw Error('Request failed (HTTP '+response.status+')');
+ return response.json();
+}
+async function nextCounts(id){
+ const directory=await getJson(NEXTCOUNTS+'/api/youtube/studio/channels');
+ if(!directory.success||!Array.isArray(directory.data))throw Error('NextCounts directory unavailable');
+ const entry=directory.data.find(item=>String(item.id)===id);
+ if(!entry||entry.countsAvailable===false)throw Error('Channel is not published in NextCounts');
+ const result=await getJson(NEXTCOUNTS+'/api/youtube/studio/channel/'+encodeURIComponent(id)+'/realtime');
+ if(!result.success)throw Error('NextCounts realtime count unavailable');
+ const raw=result.data?.subscribers??result.data?.subscriberCount??result.data?.statistics?.subscriberCount;
+ const count=Number(raw);
+ if(raw==null||raw===''||!Number.isSafeInteger(count)||count<0)throw Error('Invalid NextCounts subscriber count');
+ return {count,name:entry.name||entry.title||'',avatar:entry.avatar||entry.image||'',source:'NextCounts (exact)'};
+}
+async function mixerno(id){
+ const data=await getJson(MIXERNO+'/user/'+encodeURIComponent(id)+'?_cacheBust='+Date.now());
+ if(data.error)throw Error('Mixerno returned an API error');
+ const roots=[data,data.data,data.result,data.channel].filter(Boolean);
+ const rawCount=pick(roots,['counts.0.count','counts.0','count','subscriberCount','estimatedSubscribers','estimatedSubscriberCount','statistics.subscriberCount'],0);
+ const count=parseCount(rawCount);
+ if(!count&&!['0',0].includes(rawCount))throw Error('Mixerno did not return a readable subscriber count');
+ return {count,name:String(pick(roots,['user.0.count','user.0','name','title','channelName','channel.title'],'YouTube channel')),avatar:String(pick(roots,['user.1.count','user.1','image','avatar','imageUrl','thumbnail'],'')),source:'Mixerno.Space (estimated)'};
+}
+async function sharedOverride(id){
+ try{const value=await getJson(FIREBASE+'/overrides/'+encodeURIComponent(id)+'.json?ts='+Date.now());if(value!==null&&Number.isSafeInteger(Number(value))&&Number(value)>=0)return Number(value)}catch(e){}
+ return null;
+}
+function updateRate(count){
+ const now=Date.now();
+ if(lastSample&&lastSample.id===channelId){
+  const hours=(now-lastSample.time)/3600000;
+  if(hours>0&&count!==lastSample.count){const instant=(count-lastSample.count)/hours;ratePerHour=ratePerHour===null?instant:ratePerHour*.65+instant*.35}
+  else if(ratePerHour===null)ratePerHour=0;
+ }
+ lastSample={id:channelId,count,time:now};
+ $('rate').textContent=ratePerHour===null?'Growth rate: calculating…':(ratePerHour>=0?'+':'')+fmt(ratePerHour)+'/hr';
+}
+function render(data,override){
+ const count=override===null?data.count:override;
+ if(data.name)channelName=data.name;
+ if(data.avatar)avatarUrl=data.avatar;
+ $('name').textContent=channelName||'YouTube channel';
+ if(avatarUrl){$('avatar').src=avatarUrl;$('avatar').hidden=false}else $('avatar').hidden=true;
+ setCount(count);
+ if(currentCount!==count){updateRate(count);currentCount=count}
+ $('status').textContent=data.source+(override===null?'':' · shared count override');
+ document.title=(channelName||'Channel')+' — Subscriber Counter';
+}
+async function refresh(){
+ if(refreshing||!channelId)return;
+ refreshing=true;
+ try{
+  let data;
+  try{data=await nextCounts(channelId)}catch(e){data=await mixerno(channelId)}
+  const override=await sharedOverride(channelId);
+  render(data,override);
+ }catch(error){
+  $('status').textContent=currentCount===null?'Could not load this channel: '+error.message:'Temporarily unable to refresh; showing the last available count.';
+ }finally{refreshing=false;refreshTimer=setTimeout(refresh,4000+Math.floor(Math.random()*3001))}
+}
+if(!channelId){
+ $('name').textContent='Missing channel ID';
+ $('count').textContent='—';
+ $('status').textContent='Add ?channel=YOUR_YOUTUBE_CHANNEL_ID to the embed URL.';
+ counter.style.display='none';
+}else{
+ if(channelName)$('name').textContent=channelName;
+ if(avatarUrl){$('avatar').src=avatarUrl}
+ refresh();
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&channelId){clearTimeout(refreshTimer);refresh()}});
+})();
+</script>
+</body>
+</html>
