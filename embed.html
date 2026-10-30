@@ -95,7 +95,7 @@ async function mixerno(id){
  const rawCount=pick(roots,['counts.0.count','counts.0','count','subscriberCount','estimatedSubscribers','estimatedSubscriberCount','statistics.subscriberCount'],0);
  const count=parseCount(rawCount);
  if(!count&&!['0',0].includes(rawCount))throw Error('Mixerno did not return a readable subscriber count');
- return {count,name:String(pick(roots,['user.0.count','user.0','name','title','channelName','channel.title'],'YouTube channel')),avatar:String(pick(roots,['user.1.count','user.1','image','avatar','imageUrl','thumbnail'],'')),source:'Mixerno.Space (estimated)'};
+ return {count,name:String(pick(roots,['user.0.count','user.0','name','title','channelName','channel.title'],'YouTube channel')),avatar:String(pick(roots,['user.1.count','user.1','image','avatar','imageUrl','thumbnail'],''))};
 }
 async function sharedOverride(id){
  try{const value=await getJson(FIREBASE+'/overrides/'+encodeURIComponent(id)+'.json?ts='+Date.now());if(value!==null&&Number.isSafeInteger(Number(value))&&Number(value)>=0)return Number(value)}catch(e){}
