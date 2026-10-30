@@ -2,8 +2,8 @@
   if (window.__channelCounterStudioReader) return;
   window.__channelCounterStudioReader = true;
 
-  const clean = value => String(value || "").replace(/\\s+/g, " ").trim();
-  const numberPattern = /\\b\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?\\b|\\b\\d{4,}\\b/g;
+  const clean = value => String(value || "").replace(/\s+/g, " ").trim();
+  const numberPattern = /\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b|\b\d{4,}\b/g;
 
   function scan() {
     const candidates = [];
@@ -32,7 +32,7 @@
       });
     }
 
-    const lines = (document.body?.innerText || "").split(/\\n+/).map(clean).filter(Boolean);
+    const lines = (document.body?.innerText || "").split(/\n+/).map(clean).filter(Boolean);
     for (let i = 0; i < lines.length; i++) {
       if (/subscriber/i.test(lines[i])) {
         add(lines.slice(Math.max(0, i - 2), Math.min(lines.length, i + 4)).join(" | "), "page text near Subscribers");
