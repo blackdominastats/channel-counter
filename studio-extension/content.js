@@ -3,52 +3,57 @@
   window.__channelCounterStudioReader = true;
 
   const clean = value => String(value || "").replace(/\s+/g, " ").trim();
-  const numberPattern = /\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b|\b\d{4,}\b/g;
 
   function scan() {
+    const bodyText = clean(document.body?.innerText || "");
     const candidates = [];
-    const add = (text, source) => {
-      const value = clean(text);
-      if (!value || value.length > 500) return;
-      const numbers = value.match(numberPattern) || [];
-      if (numbers.length) candidates.push({ text: value, numbers, source });
-    };
+    const liveIndex = bodyText.toLowerCase().indexOf("updating live");
 
+    if (liveIndex !== -1) {
+      const afterLive = bodyText.slice(liveIndex, liveIndex + 300);
+      const match = afterLive.match(/updating live\s+(.{1,140}?)\s+subscribers\b/i);
+      if (match) {
+        const middle = match[1];
+        const digitTokens = middle.match(/\b\d\b/g) || [];
+        const combined = digitTokens.join("");
+        if (combined.length >= 2 && combined.length <= 12) {
+          candidates.push({
+            text: match[0],
+            numbers: [combined],
+            exactCount: combined,
+            source: "Studio live subscriber count"
+          });
+        }
+      }
+    }
+
+    // Fallback: inspect visible elements whose accessible label explicitly mentions
+    // the live subscriber count. Avoid scanning analytics charts and date labels.
     const selectors = [
-      '[aria-label*="subscriber" i]',
-      '[title*="subscriber" i]',
-      '[class*="subscriber" i]',
-      '[id*="subscriber" i]',
-      'ytcp-live-subscriber-count',
-      'ytcp-analytics-overview'
+      '[aria-label*="live subscriber count" i]',
+      '[title*="live subscriber count" i]',
+      'ytcp-live-subscriber-count'
     ];
     for (const selector of selectors) {
       document.querySelectorAll(selector).forEach(el => {
-        if (el.getClientRects().length) {
-          add(el.getAttribute("aria-label"), selector + " aria-label");
-          add(el.getAttribute("title"), selector + " title");
-          add(el.innerText || el.textContent, selector);
+        if (!el.getClientRects().length) return;
+        const text = clean(el.getAttribute("aria-label") || el.getAttribute("title") || el.innerText || el.textContent);
+        const digits = text.match(/\d/g) || [];
+        if (digits.length >= 2 && digits.length <= 12) {
+          const combined = digits.join("");
+          if (!candidates.some(item => item.exactCount === combined)) {
+            candidates.push({
+              text,
+              numbers: [combined],
+              exactCount: combined,
+              source: "Accessible live-count label"
+            });
+          }
         }
       });
     }
 
-    const lines = (document.body?.innerText || "").split(/\n+/).map(clean).filter(Boolean);
-    for (let i = 0; i < lines.length; i++) {
-      if (/subscriber/i.test(lines[i])) {
-        add(lines.slice(Math.max(0, i - 2), Math.min(lines.length, i + 4)).join(" | "), "page text near Subscribers");
-      }
-    }
-
-    const unique = [];
-    const seen = new Set();
-    for (const item of candidates) {
-      const key = item.text.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        unique.push(item);
-      }
-    }
-    return unique.slice(0, 20);
+    return candidates.slice(0, 5);
   }
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
