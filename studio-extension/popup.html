@@ -1,24 +1,14 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Studio count test</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Studio count connection</title>
 <style>
-body{width:340px;margin:0;padding:16px;background:#101827;color:#f8fafc;font:14px/1.5 Arial,sans-serif}
-h2{font-size:17px;margin:0 0 8px}.muted{color:#aab7ca}.status{padding:10px;background:#1e293b;border-radius:7px;margin:12px 0}
-button{width:100%;padding:10px;border:0;border-radius:6px;background:#818cf8;color:#111827;font-weight:700;cursor:pointer}
-.item{padding:9px;margin:8px 0;background:#1e293b;border-radius:6px;overflow-wrap:anywhere}
-.num{font-size:20px;font-weight:700;color:#86efac}.small{font-size:12px;color:#aab7ca}
-</style>
-</head>
-<body>
-<h2>YouTube Studio count test</h2>
-<div class="muted">Open your own Studio Analytics → Realtime → See Live Count page, then press the button.</div>
-<div id="status" class="status">Waiting to scan the active tab.</div>
-<button id="scan">Read visible Studio count</button>
-<div id="results"></div>
-<p class="small">Test only: this extension reads visible page text locally. It does not send counts, Google account details, cookies or tokens anywhere.</p>
-<script src="popup.js"></script>
-</body>
-</html>
+body{width:350px;margin:0;padding:16px;background:#101827;color:#f8fafc;font:14px/1.5 Arial,sans-serif}h2{font-size:17px;margin:0 0 8px}.muted,.small{color:#aab7ca;font-size:12px}.status{padding:10px;background:#1e293b;border-radius:7px;margin:12px 0}button{width:100%;padding:10px;border:0;border-radius:6px;background:#818cf8;color:#111827;font-weight:700;cursor:pointer;margin-top:8px}input{width:100%;box-sizing:border-box;padding:9px;background:#1e293b;color:#fff;border:1px solid #475569;border-radius:6px;margin:6px 0 10px}.item{padding:9px;margin:8px 0;background:#1e293b;border-radius:6px;overflow-wrap:anywhere}.num{font-size:20px;font-weight:700;color:#86efac}label{display:flex;gap:8px;align-items:center;margin-top:8px}label input{width:auto;margin:0}
+</style></head><body>
+<h2>YouTube Studio count connection</h2>
+<div class="muted">Enter the private connection token issued for your channel. The extension reads the visible Studio counter and sends only the channel ID and count to your counter server.</div>
+<label for="token">Private channel token</label><input id="token" type="password" placeholder="64-character connection token" autocomplete="off">
+<label><input id="enabled" type="checkbox"> Enable automatic sharing</label>
+<button id="save">Save connection settings</button>
+<div id="status" class="status">Not configured.</div>
+<button id="scan">Test read visible Studio count</button><div id="results"></div>
+<p class="small">Sharing works only while this browser is open on your own YouTube Studio. Never share your token. It does not read passwords, cookies, or Google session tokens.</p>
+<script src="popup.js"></script></body></html>
