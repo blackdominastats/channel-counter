@@ -2,7 +2,7 @@
   if (window.__channelCounterStudioReader) return;
   window.__channelCounterStudioReader = true;
   const API = "https://netxibndmfqbrvulkqgd.supabase.co/functions/v1/studio-counts";
-  const clean = value => String(value || "").replace(/\\s+/g, " ").trim();
+  const clean = value => String(value || "").replace(/\s+/g, " ").trim();
 
   function readCounters() {
     const roots = [...document.querySelectorAll("yta-smooth-counter")];
@@ -16,13 +16,13 @@
       if (!counter || !root.getClientRects().length || !cells.length) continue;
       let digits = "", valid = true;
       for (const value of values) {
-        if (/^\\d$/.test(value)) digits += value;
+        if (/^\d$/.test(value)) digits += value;
         else if (value === "," || value === "") continue;
         else { valid = false; break; }
       }
       if (valid && digits.length >= 1 && digits.length <= 15) candidates.push({
         exactCount:digits,
-        formattedCount:digits.replace(/\\B(?=(\\d{3})+(?!\\d))/g,","),
+        formattedCount:digits.replace(/\B(?=(\d{3})+(?!\d))/g,","),
         source:"YouTube Studio smooth counter"
       });
     }
@@ -30,7 +30,7 @@
   }
 
   function getChannelId() {
-    const match = location.pathname.match(/\\/channel\\/(UC[a-zA-Z0-9_-]{22})/);
+    const match = location.pathname.match(/\/channel\/(UC[a-zA-Z0-9_-]{22})/);
     return match ? match[1] : null;
   }
 
