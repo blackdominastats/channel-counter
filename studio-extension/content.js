@@ -4,53 +4,57 @@
 
   const clean = value => String(value || "").replace(/\\s+/g, " ").trim();
 
-  function readCounter() {
-    // Target the dedicated subscriber analytics counter, not arbitrary page numbers.
-    const roots = [...document.querySelectorAll("yta-explore-subscribers yta-smooth-counter")];
+  function readCounters() {
+    // The supplied Studio markup uses the yta-explore-subscribers class on
+    // descendants; it does not guarantee a <yta-explore-subscribers> ancestor.
+    const roots = [...document.querySelectorAll("yta-smooth-counter")];
+    const diagnostics = [];
+    const candidates = [];
+
     for (const root of roots) {
-      const counter = root.querySelector("#counter.counter");
-      if (!counter || !counter.getClientRects().length) continue;
+      const counter = root.querySelector(".counter");
+      const cells = [...root.querySelectorAll(".counter-value")];
+      const visibleCells = cells.filter(el => el.getClientRects().length);
+      const visibleText = visibleCells.map(el => clean(el.textContent));
+      diagnostics.push({
+        rootVisible: !!root.getClientRects().length,
+        counterFound: !!counter,
+        cellsFound: cells.length,
+        visibleCells: visibleCells.length,
+        values: visibleText.slice(0, 30),
+        rootClasses: root.className?.toString?.() || ""
+      });
 
-      const symbols = [...counter.querySelectorAll(":scope > div > .counter-symbol")];
-      if (!symbols.length) continue;
+      if (!counter || !root.getClientRects().length || !visibleCells.length) continue;
 
+      // Read only the displayed counter cells, preserving their DOM order.
       let digits = "";
       let valid = true;
-      for (const symbol of symbols) {
-        const digitCell = [...symbol.querySelectorAll(".counter-value[is-digit]")]
-          .find(el => el.getClientRects().length && /^\\d$/.test(clean(el.textContent)));
-        if (digitCell) {
-          digits += clean(digitCell.textContent);
-          continue;
-        }
-
-        const punctuation = [...symbol.querySelectorAll(".counter-value")]
-          .find(el => el.getClientRects().length && clean(el.textContent) === ",");
-        if (punctuation) continue;
-
-        valid = false;
-        break;
+      for (const cell of visibleCells) {
+        const value = clean(cell.textContent);
+        if (/^\\d$/.test(value)) digits += value;
+        else if (value === ",") continue;
+        else if (value === "") continue;
+        else { valid = false; break; }
       }
 
       if (valid && digits.length >= 1 && digits.length <= 15) {
-        return {
+        candidates.push({
           exactCount: digits,
-          formattedCount: Number(digits).toLocaleString("en-US"),
-          source: "YouTube Studio yta-smooth-counter",
-          text: clean(counter.innerText || counter.textContent)
-        };
+          formattedCount: digits.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ","),
+          source: "YouTube Studio smooth counter"
+        });
       }
     }
-    return null;
+    return { candidates, diagnostics, smoothCounterElements: roots.length };
   }
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message?.type === "READ_STUDIO_COUNT") {
-      const result = readCounter();
       sendResponse({
         url: location.href,
         title: document.title,
-        candidate: result,
+        ...readCounters(),
         checkedAt: new Date().toISOString()
       });
     }
