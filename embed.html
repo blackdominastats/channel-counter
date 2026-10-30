@@ -10,21 +10,22 @@
 :root{color-scheme:dark;--fg:#fff;--muted:rgba(255,255,255,.72);--panel:rgba(30,41,59,.92);--border:rgba(148,163,184,.25);--weight:300}
 *{box-sizing:border-box}
 html,body{margin:0;min-width:0;min-height:0;background:transparent!important}
-body{padding:6px;color:var(--fg);font:14px/1.3 Roboto,Arial,sans-serif;overflow:hidden}
-#counter{display:flex;align-items:center;gap:12px;width:max-content;max-width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel);color:var(--fg)}
+body{padding:0;color:var(--fg);font:14px/1.3 Roboto,Arial,sans-serif;overflow:hidden}
+#counter{display:flex;align-items:center;gap:10px;width:max-content;max-width:100%;padding:4px 6px;border:0;border-radius:0;background:var(--panel);color:var(--fg)}
 #counter.transparent{background:transparent;border-color:transparent}
-#counter.light{color:#111827;background:rgba(248,250,252,.94);border-color:rgba(15,23,42,.15)}
-#avatar{width:58px;height:58px;flex:0 0 58px;object-fit:cover;border-radius:50%;background:rgba(148,163,184,.2)}
-#content{min-width:0;display:flex;flex-direction:column;gap:2px}
-#name{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(70vw,440px)}
-#count{font-size:clamp(34px,7vw,58px);font-weight:var(--weight);line-height:1;letter-spacing:-1px;white-space:nowrap}
-#rate{font-size:12px;color:var(--muted);white-space:nowrap}
+#counter.light{color:#111827;background:rgba(248,250,252,.94);border-color:transparent}
+#avatar{width:76px;height:76px;flex:0 0 76px;object-fit:cover;border-radius:50%;background:rgba(148,163,184,.2)}
+#content{min-width:0;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:0}
+#topline{display:flex;align-items:baseline;gap:4px;min-width:0;max-width:min(78vw,520px);white-space:nowrap;overflow:hidden}
+#name{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#count{font-size:clamp(42px,7vw,62px);font-weight:var(--weight);line-height:1!important;letter-spacing:-1px;white-space:nowrap}
+#rate{font-size:14px;font-weight:700;color:var(--muted);white-space:nowrap}
 #counter.light #rate{color:#475569}
 #status{font:12px/1.35 Arial,sans-serif;color:var(--muted);padding:3px 4px;max-width:360px}
 #counter.wide #avatar{display:none}
-#counter.wide #count{font-size:clamp(38px,8vw,68px)}
-#counter.small #avatar{width:42px;height:42px;flex-basis:42px}
-#counter.small #count{font-size:clamp(30px,6vw,46px)}
+#counter.wide #count{font-size:clamp(42px,7vw,62px)}
+#counter.small #avatar{width:76px;height:76px;flex-basis:76px}
+#counter.small #count{font-size:clamp(42px,7vw,62px)}
 .odometer,.odometer-inside,.odometer-digit,.odometer-digit-inner,.odometer-ribbon-inner{line-height:1!important}
 .odometer-digit{height:1em!important;vertical-align:baseline!important}
 .odometer-formatting-mark{display:inline-block!important;line-height:1!important;height:auto!important;vertical-align:baseline!important;position:relative!important;top:-.08em!important}
@@ -32,7 +33,7 @@ body{padding:6px;color:var(--fg);font:14px/1.3 Roboto,Arial,sans-serif;overflow:
 </style>
 </head>
 <body>
-<div id="counter" class="small"><img id="avatar" alt=""><div id="content"><div id="name">Loading channel…</div><div id="count">—</div><div id="rate"></div></div></div>
+<div id="counter" class="small"><img id="avatar" alt=""><div id="content"><div id="topline"><div id="name">Loading channel…</div><div id="rate"></div></div><div id="count">—</div></div></div>
 <div id="status" role="status" aria-live="polite"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/odometer.min.js"></script>
 <script>
@@ -109,7 +110,7 @@ function updateRate(count){
   else if(ratePerHour===null)ratePerHour=0;
  }
  lastSample={id:channelId,count,time:now};
- $('rate').textContent=ratePerHour===null?'Growth rate: calculating…':(ratePerHour>=0?'+':'')+fmt(ratePerHour)+'/hr';
+ $('rate').textContent=ratePerHour===null?'(calculating/hr)':'('+fmt(ratePerHour)+'/hr)';
 }
 function render(data,override){
  const count=override===null?data.count:override;
