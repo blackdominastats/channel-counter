@@ -2,58 +2,74 @@
   if (window.__channelCounterStudioReader) return;
   window.__channelCounterStudioReader = true;
 
-  const clean = value => String(value || "").replace(/\s+/g, " ").trim();
+  const clean = value => String(value || "").replace(/\\s+/g, " ").trim();
+  const visible = el => !!(el && el.getClientRects().length);
+
+  function describe(el) {
+    if (!el) return "";
+    const parts = [];
+    let node = el;
+    for (let depth = 0; node && depth < 5; depth++, node = node.parentElement) {
+      let label = node.tagName.toLowerCase();
+      if (node.id) label += "#" + node.id;
+      if (typeof node.className === "string" && node.className.trim()) {
+        label += "." + node.className.trim().split(/\\s+/).slice(0, 3).join(".");
+      }
+      parts.push(label);
+    }
+    return parts.join(" ← ");
+  }
 
   function scan() {
-    const bodyText = clean(document.body?.innerText || "");
-    const candidates = [];
-    const liveIndex = bodyText.toLowerCase().indexOf("updating live");
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const markers = [];
+    let textNode;
+    while ((textNode = walker.nextNode())) {
+      if (/updating\\s+live/i.test(textNode.nodeValue || "")) {
+        const el = textNode.parentElement;
+        if (visible(el)) markers.push(el);
+      }
+    }
 
-    if (liveIndex !== -1) {
-      const afterLive = bodyText.slice(liveIndex, liveIndex + 300);
-      const match = afterLive.match(/updating live\s+(.{1,140}?)\s+subscribers\b/i);
-      if (match) {
-        const middle = match[1];
-        const digitTokens = middle.match(/\b\d\b/g) || [];
-        const combined = digitTokens.join("");
-        if (combined.length >= 2 && combined.length <= 12) {
-          candidates.push({
-            text: match[0],
-            numbers: [combined],
-            exactCount: combined,
-            source: "Studio live subscriber count"
-          });
+    const diagnostics = [];
+    const candidates = [];
+    for (const marker of markers.slice(0, 5)) {
+      let node = marker;
+      for (let depth = 0; node && depth < 7; depth++, node = node.parentElement) {
+        if (!visible(node)) continue;
+        const text = clean(node.innerText || node.textContent);
+        if (!/updating\\s+live/i.test(text) || !/subscribers/i.test(text)) continue;
+        if (text.length > 500) continue;
+
+        const digitLeaves = [...node.querySelectorAll("*")]
+          .filter(el => visible(el) && el.children.length === 0)
+          .map(el => clean(el.innerText || el.textContent))
+          .filter(value => /^\\d$/.test(value));
+        const combined = digitLeaves.join("");
+
+        diagnostics.push({
+          path: describe(node),
+          text: text.slice(0, 220),
+          digitLeaves: digitLeaves.slice(0, 20),
+          digitCount: digitLeaves.length
+        });
+
+        // Only accept a compact local section with individually rendered digit cells.
+        if (combined.length >= 2 && combined.length <= 12 && text.length <= 220) {
+          const key = combined + "|" + describe(node);
+          if (!candidates.some(item => item.key === key)) {
+            candidates.push({
+              key,
+              exactCount: combined,
+              source: "Digit elements inside Updating live section",
+              text
+            });
+          }
         }
       }
     }
 
-    // Fallback: inspect visible elements whose accessible label explicitly mentions
-    // the live subscriber count. Avoid scanning analytics charts and date labels.
-    const selectors = [
-      '[aria-label*="live subscriber count" i]',
-      '[title*="live subscriber count" i]',
-      'ytcp-live-subscriber-count'
-    ];
-    for (const selector of selectors) {
-      document.querySelectorAll(selector).forEach(el => {
-        if (!el.getClientRects().length) return;
-        const text = clean(el.getAttribute("aria-label") || el.getAttribute("title") || el.innerText || el.textContent);
-        const digits = text.match(/\d/g) || [];
-        if (digits.length >= 2 && digits.length <= 12) {
-          const combined = digits.join("");
-          if (!candidates.some(item => item.exactCount === combined)) {
-            candidates.push({
-              text,
-              numbers: [combined],
-              exactCount: combined,
-              source: "Accessible live-count label"
-            });
-          }
-        }
-      });
-    }
-
-    return candidates.slice(0, 5);
+    return { candidates: candidates.slice(0, 3), diagnostics: diagnostics.slice(0, 8), markerCount: markers.length };
   }
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -61,7 +77,7 @@
       sendResponse({
         url: location.href,
         title: document.title,
-        candidates: scan(),
+        ...scan(),
         checkedAt: new Date().toISOString()
       });
     }
