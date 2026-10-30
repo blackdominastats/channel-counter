@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Channel Counter — Studio Count Test",
+  "version": "0.1.0",
+  "description": "Tests whether the full subscriber count visible in YouTube Studio can be read locally.",
+  "permissions": ["activeTab"],
+  "host_permissions": ["https://studio.youtube.com/*"],
+  "action": {
+    "default_title": "Read Studio subscriber count",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [{
+    "matches": ["https://studio.youtube.com/*"],
+    "js": ["content.js"],
+    "run_at": "document_idle"
+  }]
+}
