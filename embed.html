@@ -39,7 +39,7 @@ body{padding:6px;color:var(--fg);font:14px/1.3 Roboto,Arial,sans-serif;overflow:
 (()=>{'use strict';
 const $=id=>document.getElementById(id);
 const params=new URLSearchParams(location.search);
-const channelId=(params.get('channel')||params.get('id')||'').match(/UC[a-zA-Z0-9_-]{20,}/)?.[0]||'';
+const channelId=(params.get('embed')||params.get('channel')||params.get('id')||'').match(/UC[a-zA-Z0-9_-]{20,}/)?.[0]||'';
 const MIXERNO='https://mixerno.space/api/youtube-channel-counter';
 const NEXTCOUNTS='https://api.nextcounts.com';
 const FIREBASE='https://channel-counter-d7a71-default-rtdb.firebaseio.com';
@@ -52,7 +52,7 @@ else if(settings.theme==='light')counter.classList.add('light');
 else counter.style.backgroundColor='rgba(30,41,59,'+(settings.opacity/100)+')';
 if(params.get('avatar')==='0')$('avatar').hidden=true;
 if(params.get('name')==='0')$('name').hidden=true;
-let odometer=null,currentCount=null,lastSample=null,ratePerHour=null,refreshTimer=null,refreshing=false,channelName=params.get('channelName')||'',avatarUrl=params.get('avatarUrl')||'';
+let odometer=null,currentCount=null,lastSample=null,ratePerHour=null,refreshTimer=null,refreshing=false,channelName=params.get('channelName')||'',avatarUrl=params.get('avatarUrl')||(params.get('avatar')&&!['0','1','true','false'].includes(params.get('avatar'))?params.get('avatar'):'');
 const fmt=n=>Math.round(n).toLocaleString('en-US');
 function setCount(value){
  if(!Number.isFinite(value)||value<0)return;
@@ -119,7 +119,7 @@ function render(data,override){
  if(avatarUrl){$('avatar').src=avatarUrl;$('avatar').hidden=false}else $('avatar').hidden=true;
  setCount(count);
  if(currentCount!==count){updateRate(count);currentCount=count}
- $('status').textContent=data.source+(override===null?'':' · shared count override');
+ $('status').textContent='';
  document.title=(channelName||'Channel')+' — Subscriber Counter';
 }
 async function refresh(){
@@ -137,7 +137,7 @@ async function refresh(){
 if(!channelId){
  $('name').textContent='Missing channel ID';
  $('count').textContent='—';
- $('status').textContent='Add ?channel=YOUR_YOUTUBE_CHANNEL_ID to the embed URL.';
+ $('status').textContent='Add ?embed=YOUR_YOUTUBE_CHANNEL_ID to the embed URL.';
  counter.style.display='none';
 }else{
  if(channelName)$('name').textContent=channelName;
