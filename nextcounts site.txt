@@ -1,0 +1,304 @@
+Your next idea.
+Powered by live data.
+Creator statistics, platform discovery and recorded history. A clear contract for everything you build.
+
+Public API origin
+https://api.nextcounts.com
+Open API directory
+IN THIS REFERENCE
+Getting started
+Discovery and platform data
+YouTube
+Profiles and compatibility routes
+Recorded analytics
+Creator rankings
+Live streaming categories
+Published Studio channels
+Errors and retries
+Quota and caching
+Manage your API keys ↗
+01
+GET CONNECTED
+From discovery to your first counter.
+This discovery request lists supported platforms without requesting individual creator statistics.
+
+const response = await fetch('https://api.nextcounts.com/api/platforms');
+if (!response.ok) throw new Error('Request failed: ' + response.status);
+const result = await response.json();
+if (!result.success) throw new Error(result.error?.code || 'API error');
+console.log(result.data);
+Use the discovered capabilities
+Check search, content, metric names and resource kinds before building a request. Encode each identifier as one URL path segment.
+
+Authenticate with your API key
+Create a named key in API keys and send it in the X-API-Key header. Keep it on your server; never include it in a shared URL.
+
+Quota and caching
+Rate limits are deployment-configured. Read X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset and Retry-After. Dashboard keys also expose X-NC-Quota-Limit, X-NC-Quota-Remaining and X-NC-Quota-Reset. All keys belonging to one account share a daily UTC quota: 20,000 for standard accounts and 1,000,000 for Studio and NCPro. Renaming, rotating or replacing a key does not reset usage.
+
+Your website access stays available.
+Running out of developer quota does not block ordinary NextCounts website access or dashboard management. Custom live counters use their creator’s quota, including when viewed privately on NextCounts or through a shared link. External viewers are never charged.
+
+Counter refreshes run only while viewed and may return cached platform data. They pause when the creator’s quota is exhausted. A slower refresh interval reduces consumption.
+
+From discovery to a working counter
+Find the platform’s resource kinds and metrics in /api/platforms.
+Search for a creator, then store the returned stable ID.
+Read their current statistics. Request history separately when you need a chart.
+JavaScript
+cURL
+Python
+Copy request
+const response = await fetch('https://api.nextcounts.com/api/bilibili/channel/2', {
+  headers: { 'X-API-Key': process.env.NEXTCOUNTS_API_KEY }
+});
+if (!response.ok) throw new Error('NextCounts: ' + response.status);
+const result = await response.json();
+console.log(result.data);
+Run credentialed requests on your server. This example uses an environment variable, never a key embedded in a page or shared link.
+
+Observation time matters
+When present, observedAt is Unix milliseconds. X-NC-Cache, X-NC-Data-Age and X-NC-Max-Age describe the cached observation, not a promise of a new platform fetch. Missing counts remain null. Public responses use opaque seriesId values; do not infer a collection source from them.
+
+Find an endpoint
+Search by platform, path or purpose
+58 endpoints
+All endpoints
+Creator data
+Bilibili
+History
+Studio
+Contracts reflect the current development source. Remote deployments may differ until updated. Response outlines below show field types, not live statistics. Additional platform fields may be present; optional fields may be absent.
+
+Discovery and platform data
+Start with capabilities and metric names, then use the same normalized contract across supported platforms.
+
+GET
+/
+Service status and endpoint directory
+GET
+/api/bilibili/video/:identifier
+Bilibili video statistics
+GET
+/api/bilibili/video/search
+Search Bilibili videos
+GET
+/api/platforms
+All platform descriptions
+GET
+/api/platforms/:platform
+One platform description
+GET
+/api/platforms/:platform/entity/:identifier
+Normalized creator, game or community
+GET
+/api/platforms/:platform/search
+Normalized search
+GET
+/api/platforms/:platform/entity/:identifier/content
+Recent content
+YouTube
+Public channel, video and content endpoints. The normalized platform route is preferable for integrations spanning multiple platforms.
+
+GET
+/api/youtube/channel/:identifier
+Public channel statistics
+GET
+/api/youtube/video/:id
+Video statistics and live viewers
+GET
+/api/youtube/video
+Video lookup by URL
+GET
+/api/youtube/channel/:identifier/videos
+Recent uploaded videos
+GET
+/api/youtube/search
+Search channels and videos
+Profiles and compatibility routes
+Dedicated routes for existing integrations. /youtube, /bluesky and /tiktok also expose legacy aliases of their /api routes.
+
+GET
+/api/bluesky/profile/:actor
+Bluesky profile
+GET
+/api/bluesky/search
+Bluesky profile search
+GET
+/api/tiktok/user/:identifier
+TikTok profile observation
+GET
+/api/tiktok/profile/:identifier
+TikTok profile observation
+GET
+/api/tiktok/user/:identifier/realtime
+TikTok profile observation
+GET
+/api/kick/channel/:identifier
+Kick channel
+GET
+/api/kick/channel/:identifier/realtime
+Kick cached channel observation
+GET
+/api/kick/search
+Kick channel search
+GET
+/api/rumble/channel/:identifier
+rumble channel
+GET
+/api/discord/server/:identifier
+discord server
+GET
+/api/roblox/game/:identifier
+roblox game
+GET
+/api/minecraft/server/:identifier
+minecraft server
+GET
+/api/twitch/channel/:identifier
+twitch channel
+GET
+/api/threads/user/:identifier
+threads user
+GET
+/api/instagram/user/:identifier
+instagram user
+GET
+/api/twitter/user/:identifier
+twitter user
+GET
+/api/bilibili/channel/:identifier
+bilibili channel
+GET
+/api/x/user/:identifier
+X / Twitter profile alias
+GET
+/api/threads/user/:identifier/realtime
+threads cached profile observation
+GET
+/api/instagram/user/:identifier/realtime
+instagram cached profile observation
+GET
+/api/twitter/user/:identifier/realtime
+twitter cached profile observation
+GET
+/api/x/user/:identifier/realtime
+x cached profile observation
+GET
+/api/rumble/search
+rumble search
+GET
+/api/twitch/search
+twitch search
+GET
+/api/roblox/search
+roblox search
+GET
+/api/tiktok/search
+tiktok search
+GET
+/api/threads/search
+threads search
+GET
+/api/instagram/search
+instagram search
+GET
+/api/twitter/search
+twitter search
+GET
+/api/bilibili/search
+bilibili search
+GET
+/api/x/search
+x search
+Recorded analytics
+History contains recorded observations, with UTC daily or hourly buckets. It is not an estimate of missing history.
+
+GET
+/api/analytics
+Resources and tracking eligibility
+GET
+/api/analytics/:platform/:kind/:id
+Query historical metric series
+Creator rankings
+Rankings cover tracked creators. They are not a verified census of an entire platform.
+
+GET
+/api/top/:platform
+Top tracked creators
+GET
+/api/growing/:platform
+Largest observed gains
+GET
+/api/losing/:platform
+Largest observed losses
+Live streaming categories
+Provider category totals are separate from creator rankings. They cannot identify a tournament audience without selecting its broadcasts.
+
+GET
+/api/kick/category/:identifier
+kick category viewers
+GET
+/api/kick/categories/top
+kick top categories
+GET
+/api/kick/categories/search
+kick category search
+GET
+/api/twitch/category/:identifier
+twitch category viewers
+GET
+/api/twitch/categories/top
+twitch top categories
+GET
+/api/twitch/categories/search
+twitch category search
+Published Studio channels
+These public reads respect channel publication and revocation. Dashboard sign-in does not automatically publish a channel or authorize new Studio access.
+
+GET
+/api/youtube/studio/channels
+Published channel directory
+GET
+/api/youtube/studio/channel/:id/realtime
+Published Unabbreviated totals
+GET
+/api/youtube/studio/channel/:id
+Published totals and recent view activity
+Errors and retries
+Check the HTTP status and, for public data responses, success. Use the error code for application behavior and keep the trace ID for support.
+
+{
+  "success": false,
+  "error": {
+    "code": "Stable machine-readable code",
+    "message": "Public message",
+    "traceId": "Support reference",
+    "details": "Optional validation or operational details"
+  }
+}
+400
+NC-INPUT-400
+Invalid identifier, query or unsupported capability. Correct the request.
+401 / 403
+NC-AUTH-401 / NC-AUTH-403
+Authentication or publication access is unavailable. Do not continuously retry.
+404
+NC-RES-404 or platform-specific code
+Unknown or unavailable resource. Check the platform capability and stable identifier.
+Eligibility
+NC-ANALYTICS-MINIMUM
+History tracking is not available for this resource yet; live data may still work.
+429
+NC-RATE-429
+Rate limit reached. Respect Retry-After and apply backoff.
+401
+INVALID_API_KEY
+A dashboard-issued key is invalid, rotated or revoked. It does not fall back to anonymous access.
+429
+DASHBOARD_QUOTA_EXCEEDED
+The shared UTC developer allowance is exhausted. Named-key requests and custom counter refreshes share it. Ordinary website access and dashboard management remain available. Private and shared custom counters consume their creator’s quota; viewers are never charged. Wait until reset for further quota-backed requests.
+500 / 502 / 503 / 504
+NC-SYS-500 or operational code
+Temporary service failure. Retry with bounded backoff and retain the traceId for support.
+Use bounded retries with backoff for temporary failures. Cache reads and pause polling when a view is hidden. A realtime route name does not imply an uncached request.
