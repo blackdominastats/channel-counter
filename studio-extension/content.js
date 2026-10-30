@@ -35,6 +35,7 @@
   }
 
   let lastSent = "";
+  let lastSentAt = 0;
   async function automaticShare() {
     try {
       const settings = await chrome.storage.local.get(["studioToken","sharingEnabled"]);
@@ -45,13 +46,13 @@
       const count = Number(candidate.exactCount);
       if (!Number.isSafeInteger(count)) return;
       const signature = channelId + ":" + count;
-      if (signature === lastSent) return;
+      if (signature === lastSent && Date.now() - lastSentAt < 10000) return;
       const response = await fetch(API, {
         method:"POST",
         headers:{"Content-Type":"application/json","x-studio-token":settings.studioToken},
         body:JSON.stringify({channel_id:channelId,subscriber_count:count})
       });
-      if (response.ok) lastSent = signature;
+      if (response.ok) { lastSent = signature; lastSentAt = Date.now(); }
       else if (response.status !== 429) console.warn("[Channel Counter] Share failed:", response.status);
     } catch (error) {
       console.warn("[Channel Counter] Automatic sharing error:", error);
