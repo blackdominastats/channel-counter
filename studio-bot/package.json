@@ -1,0 +1,8 @@
+{
+  "name": "channel-counter-studio-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node worker.mjs", "check": "node --check worker.mjs" },
+  "dependencies": { "playwright-core": "1.58.2" }
+}
