@@ -26,6 +26,7 @@ function initCleanMenus(){
   const content=document.createElement('div');content.className='section-content';
   original.forEach(node=>content.appendChild(node));
   const title=content.querySelector('h2')?.textContent?.trim()||({keyPanel:'Data source',nextCountsPanel:'NextCounts connection',adminSection:'Admin controls',counterSettings:'Counter settings',obsSettings:'OBS browser-source embed'}[id]||'Section');
+  if(id==='keyPanel')content.querySelector('h2')?.remove();
   const toggle=document.createElement('button');toggle.type='button';toggle.className='section-toggle';
   toggle.innerHTML='<span class="toggle-label"></span><span class="toggle-hint"></span>';
   toggle.querySelector('.toggle-label').textContent=title;
