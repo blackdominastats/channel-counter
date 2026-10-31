@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Compare YouTube Channels</title>
+<style>
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#273449;--line:#465365;--text:#f8fafc;--muted:#9fb0c8;--accent:#818cf8;--red:#ff0033}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 Roboto,Arial,sans-serif}
+header{text-align:center;padding:22px 24px 16px;background:var(--panel);border-bottom:1px solid #384558}
+h1{margin:0 0 8px;font-size:28px}.sub{color:var(--muted)}a{color:#c7d2fe}
+main{max-width:1800px;margin:24px auto;padding:0 28px}
+.pickers,.comparegrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.picker,.channel,.difference{background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.picker{padding:16px}.picker h2{text-align:center;margin:0 0 12px;font-size:22px}
+.searchrow{display:flex;gap:10px;margin-top:10px}.searchrow input{flex:1;min-width:0}
+input,button{font:inherit;border-radius:7px;padding:10px 12px;border:1px solid var(--line)}
+input{background:#293548;color:var(--text)}button{background:var(--accent);color:#111827;cursor:pointer;border-color:transparent}
+.results{display:grid;gap:8px;margin-top:10px;max-height:260px;overflow:auto}
+.result{display:flex;align-items:center;gap:12px;background:var(--panel2);color:var(--text);text-align:left;border:1px solid var(--line);width:100%}
+.avatar{width:54px;height:54px;border-radius:50%;object-fit:cover;background:#334155;flex:none}
+.name{font-size:19px}.handle{color:var(--muted);font-size:13px}
+.selected{display:flex;align-items:center;gap:12px;margin-top:12px;padding:10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px}
+.selected .info{flex:1;min-width:0}.remove{border-radius:50%;background:transparent;color:var(--text);border:1px solid var(--line);padding:6px 11px}
+.comparegrid{margin-top:14px}.channel{overflow:hidden;text-align:center;position:relative}
+.banner{height:120px;background:linear-gradient(120deg,#05070d,#263449);background-size:cover;background-position:center}
+.channelbody{padding:0 16px 18px}.bigavatar{width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid var(--panel);margin-top:-48px;position:relative;background:#334155}
+.channelname{font-size:23px;margin-top:5px}.count{font-size:clamp(34px,5vw,82px);font-weight:300;letter-spacing:-2px;overflow-wrap:anywhere;margin:10px 0 0}
+.countlabel{color:var(--muted);margin-top:5px}.difference{margin-top:16px;text-align:center;padding:18px}
+.diffcount{font-size:clamp(30px,4vw,52px);font-weight:300}.difflabel{color:var(--muted)}
+.status{text-align:center;color:var(--muted);margin:14px 0}.hidden{display:none!important}
+@media(max-width:760px){main{padding:0 12px}.pickers,.comparegrid{grid-template-columns:1fr}.count{letter-spacing:-1px}.picker h2{font-size:20px}}
+</style></head><body>
+<header><h1>Subscriber Compare</h1><div class="sub">Compare two YouTube channels and see the live subscriber difference.</div><div style="margin-top:12px"><a href="index.html">← Back to Channel Counter</a></div></header>
+<main>
+<div class="pickers">
+<section class="picker"><h2><span style="color:#ff0033">▶</span> YouTube Channel 1</h2><form class="searchrow" id="form1"><input id="query1" placeholder="Search for a YouTube channel…" required><button>Search</button></form><div class="results" id="results1"></div><div class="selected hidden" id="selected1"></div></section>
+<section class="picker"><h2><span style="color:#ff0033">▶</span> YouTube Channel 2</h2><form class="searchrow" id="form2"><input id="query2" placeholder="Search for a YouTube channel…" required><button>Search</button></form><div class="results" id="results2"></div><div class="selected hidden" id="selected2"></div></section>
+</div>
+<div class="status" id="status">Search for a channel in each column, then compare.</div>
+<div class="comparegrid" id="comparegrid">
+<div class="channel hidden" id="card1"><div class="banner" id="banner1"></div><div class="channelbody"><img class="bigavatar" id="avatar1" alt=""><div class="channelname" id="name1"></div><div class="handle" id="handle1"></div><div class="count" id="count1">—</div><div class="countlabel">♙ Subscribers (Estimated)</div></div></div>
+<div class="channel hidden" id="card2"><div class="banner" id="banner2"></div><div class="channelbody"><img class="bigavatar" id="avatar2" alt=""><div class="channelname" id="name2"></div><div class="handle" id="handle2"></div><div class="count" id="count2">—</div><div class="countlabel">♙ Subscribers (Estimated)</div></div></div>
+</div>
+<div class="difference hidden" id="difference"><div class="diffcount" id="diffcount">—</div><div class="difflabel" id="difflabel">Subscriber difference</div></div>
+</main>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id), API='https://mixerno.space/api/youtube-channel-counter';
+const chosen=[null,null];let refreshTimer=null;
+const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>Number(n||0).toLocaleString('en-US');
+function parseCount(v){if(typeof v==='number')return Number.isFinite(v)?v:0;const m=String(v??'').replace(/,/g,'').trim().match(/^([\d.]+)([KMB])?$/i);if(!m)return 0;return Math.round(Number(m[1])*(({K:1e3,M:1e6,B:1e9})[(m[2]||'').toUpperCase()]||1))}
+async function api(path){const r=await fetch(API+'/'+path+'?_cacheBust='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('Mixerno API HTTP '+r.status);const d=await r.json();if(d.error)throw Error(String(d.error));return d}
+function extractId(v){const m=String(v||'').match(/UC[a-zA-Z0-9_-]{20,}/);return m?m[0]:''}
+function itemsOf(d){const a=d?.list||d?.items||d?.results||d?.channels||d?.data?.list||d?.data?.items||d?.data||d?.user||[];return Array.isArray(a)?a:Object.values(a||{})}
+function infoOf(c){if(Array.isArray(c))return {title:String(c[0]?.count||c[0]||'YouTube channel'),avatar:String(c[1]?.count||c[1]||''),id:extractId(c[2]?.count||c[2])};return {title:String(c?.name||c?.title||c?.channelName||c?.snippet?.title||'YouTube channel'),avatar:String(c?.image||c?.avatar||c?.thumbnail||c?.snippet?.thumbnails?.medium?.url||''),id:extractId(c?.id||c?.channelId||c?.channel_id||c?.ucid||c?.user?.[2]?.count||c?.user?.[2]),handle:String(c?.handle||c?.customUrl||c?.username||'')}}
+function norm(d,id,fallback={}){const roots=[d,d?.data,d?.result,d?.channel].filter(Boolean),get=paths=>{for(const o of roots)for(const p of paths){const v=p.split('.').reduce((x,k)=>x==null?undefined:x[k],o);if(v!=null&&v!=='')return v?.count??v}return ''};const title=String(get(['user.0.count','user.0','name','title','channelName'])||fallback.title||'YouTube channel'),avatar=String(get(['user.1.count','user.1','image','avatar','thumbnail'])||fallback.avatar||''),cid=extractId(get(['user.2.count','user.2','id','channelId','channel_id'])||id)||id,count=parseCount(get(['counts.0.count','counts.0','count','subscriberCount','estimatedSubscribers']));const handle=String(get(['user.3.count','user.3','handle','customUrl','username'])||fallback.handle||'');return {id:cid,title,avatar,handle,count}}
+async function loadChannel(id,fallback){return norm(await api('user/'+encodeURIComponent(id)),id,fallback)}
+function renderSelected(slot){const c=chosen[slot],el=$('selected'+(slot+1));if(!c){el.classList.add('hidden');el.innerHTML='';$('card'+(slot+1)).classList.add('hidden');return}el.classList.remove('hidden');el.innerHTML='<img class="avatar" src="'+esc(c.avatar)+'" alt=""><div class="info"><div class="name">'+esc(c.title)+'</div><div class="handle">'+esc(c.handle||c.id)+'</div></div><button class="remove" type="button" aria-label="Remove channel">×</button>';el.querySelector('button').onclick=()=>{chosen[slot]=null;renderSelected(slot);updateCompare()};$('card'+(slot+1)).classList.remove('hidden');$('avatar'+(slot+1)).src=c.avatar;$('name'+(slot+1)).textContent=c.title;$('handle'+(slot+1)).textContent=c.handle||c.id;$('banner'+(slot+1)).style.backgroundImage='url("https://banner.yt/'+c.id+'")';$('count'+(slot+1)).textContent=fmt(c.count)}
+async function search(slot,q){const res=$('results'+(slot+1));res.innerHTML='';$('status').textContent='Searching Mixerno.Space…';try{let found=[];const term=q.trim().replace(/^https?:\/\/(www\.)?youtube\.com\//i,'').replace(/^channel\//,'').replace(/^@/,'');if(/^UC[a-zA-Z0-9_-]{20,}$/.test(term)){found=[await loadChannel(term,{title:term})]}else{const raw=await api('search/'+encodeURIComponent(term));const seen=new Set();for(const x of itemsOf(raw).slice(0,12)){const info=infoOf(x);if(!info.id||seen.has(info.id))continue;seen.add(info.id);try{found.push(await loadChannel(info.id,info))}catch{found.push({...info,count:0})}}}if(!found.length)throw Error('No channel results found. Try an exact @handle or channel ID.');found.forEach(c=>{const b=document.createElement('button');b.className='result';b.innerHTML='<img class="avatar" src="'+esc(c.avatar)+'" alt=""><div><div class="name">'+esc(c.title)+'</div><div class="handle">'+esc(c.handle||c.id)+'</div></div>';b.onclick=()=>{chosen[slot]=c;res.innerHTML='';renderSelected(slot);updateCompare()};res.append(b)});$('status').textContent='Choose a result for Channel '+(slot+1)+'.'}catch(e){$('status').textContent='Search failed: '+e.message}}
+function updateCompare(){const a=chosen[0],b=chosen[1],diff=$('difference');if(!a||!b){diff.classList.add('hidden');$('status').textContent='Select two channels to compare their subscriber counts.';return}diff.classList.remove('hidden');const n=Math.abs(a.count-b.count);$('diffcount').textContent=fmt(n);$('difflabel').textContent=(a.count===b.count?'Both channels have the same subscriber count':(a.count>b.count?a.title:b.title)+' is ahead by')+' subscribers';$('status').textContent='Comparison updates automatically about every 15 seconds.'}
+async function refresh(){for(let i=0;i<2;i++){const c=chosen[i];if(!c)continue;try{const fresh=await loadChannel(c.id,c);chosen[i]={...c,...fresh};renderSelected(i)}catch{}}updateCompare()}
+$('form1').onsubmit=e=>{e.preventDefault();search(0,$('query1').value)};$('form2').onsubmit=e=>{e.preventDefault();search(1,$('query2').value)};
+setInterval(refresh,15000);
+const params=new URLSearchParams(location.search);if(params.has('a')){$('query1').value=params.get('a');search(0,params.get('a'))}if(params.has('b')){$('query2').value=params.get('b');search(1,params.get('b'))}
+})();
+</script></body></html>
