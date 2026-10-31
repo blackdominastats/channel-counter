@@ -112,6 +112,8 @@ function timeAgo(published){
 }
 function detailedAge(published){
  const a=ageParts(published);if(!a)return 'Date unavailable';
+ // Use elapsed-time wording for uploads under 24 hours to avoid "1 day ago" beside "19 hours ago".
+ if(a.totalDays===0)return timeAgo(published);
  const parts=[];
  if(a.years)parts.push(a.years+' '+(a.years===1?'year':'years'));
  if(a.months)parts.push(a.months+' '+(a.months===1?'month':'months'));
