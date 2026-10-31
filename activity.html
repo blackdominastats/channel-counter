@@ -16,7 +16,14 @@ function idOf(v){const m=String(v||'').match(/UC[a-zA-Z0-9_-]{20,}/);return m?m[
 function candidates(raw){const a=raw?.list||raw?.items||raw?.results||raw?.channels||raw?.data?.list||raw?.data?.items||raw?.data||[];return Array.isArray(a)?a:(a&&typeof a==='object'?Object.values(a):[])}
 function info(c){if(Array.isArray(c))return {title:String(c[0]?.count??c[0]??'YouTube channel'),avatar:String(c[1]?.count??c[1]??''),id:idOf(c[2]?.count??c[2])};return {title:String(c?.name||c?.title||c?.channelName||c?.snippet?.title||'YouTube channel'),avatar:String(c?.image||c?.avatar||c?.thumbnail||c?.snippet?.thumbnails?.medium?.url||''),id:idOf(c?.id||c?.channelId||c?.channel_id||c?.ucid)}}
 function parseCount(v){const s=String(v??0).replace(/,/g,'').trim(),m=s.match(/^([\d.]+)([KMB])?$/i);if(!m)return Number(v)||0;return Math.round(Number(m[1])*({K:1e3,M:1e6,B:1e9}[(m[2]||'').toUpperCase()]||1))}
-async function mix(path){const r=await fetch(MIXERNO+'/'+path+'?_='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('Mixerno returned HTTP '+r.status);return r.json()}
+async function mix(path){
+ const urls=[MIXERNO+'/'+path+'?_='+Date.now()];
+ // Mixerno can intermittently fail; use a compatible public channel-search API as backup.
+ if(path.startsWith('search/'))urls.push('https://api.superplaycounts.pp.ua/api/youtube-channel-counter/'+path);
+ let last='Request failed';
+ for(const url of urls){try{const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json();if(data?.error||data?.status==='error')throw Error(data.message||'API error');return data}catch(e){last=e?.message||last}}
+ throw Error(last)
+}
 async function feed(id){
  const feedUrl='https://www.youtube.com/feeds/videos.xml?channel_id='+encodeURIComponent(id);
  // RSS2JSON has browser-readable JSON output; retain proxy fallbacks for availability.
