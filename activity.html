@@ -71,9 +71,33 @@ function parseAtom(body){
  if(!published)throw Error('Upload date missing');
  return {title,published,link,thumb}
 }
-function ageParts(published){if(!published)return null;const t=new Date(published).getTime();if(!Number.isFinite(t))return null;let days=Math.floor(Math.max(0,Date.now()-t)/86400000);const years=Math.floor(days/365);days-=years*365;return {years,days,totalDays:Math.floor(Math.max(0,Date.now()-t)/86400000),hours:Math.floor(Math.max(0,Date.now()-t)/3600000),minutes:Math.floor(Math.max(0,Date.now()-t)/60000)}}
-function timeAgo(published){const a=ageParts(published);if(!a)return 'Date unavailable';if(a.years>0)return (a.years===1?'1 year':a.years+' years')+' ago';if(a.totalDays===0){if(a.hours===0)return a.minutes<=1?'just now':a.minutes+' minutes ago';return a.hours===1?'1 hour ago':a.hours+' hours ago'}return a.totalDays===1?'1 day ago':a.totalDays+' days ago'}
-function detailedAge(published){const a=ageParts(published);if(!a)return 'Date unavailable';if(a.years>0){const yr=a.years===1?'1 year':a.years+' years';return a.days?yr+' '+a.days+' '+(a.days===1?'day':'days')+' ago':yr+' ago'}return timeAgo(published)}
+function ageParts(published){
+ if(!published)return null;
+ const t=new Date(published).getTime();if(!Number.isFinite(t))return null;
+ const now=new Date(),then=new Date(t);
+ let months=(now.getUTCFullYear()-then.getUTCFullYear())*12+(now.getUTCMonth()-then.getUTCMonth());
+ const addMonths=(date,n)=>{const d=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+n,1));const last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate();d.setUTCDate(Math.min(date.getUTCDate(),last));return d};
+ if(addMonths(then,months)>now)months--;
+ const anchor=addMonths(then,months);
+ const days=Math.floor((Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate())-Date.UTC(anchor.getUTCFullYear(),anchor.getUTCMonth(),anchor.getUTCDate()))/86400000);
+ const years=Math.floor(months/12),remainingMonths=months%12,ms=Math.max(0,Date.now()-t);
+ return {years,months:remainingMonths,days,totalDays:Math.floor(ms/86400000),hours:Math.floor(ms/3600000),minutes:Math.floor(ms/60000)};
+}
+function timeAgo(published){
+ const a=ageParts(published);if(!a)return 'Date unavailable';
+ if(a.years>0)return (a.years===1?'1 year':a.years+' years')+' ago';
+ if(a.months>0)return (a.months===1?'1 month':a.months+' months')+' ago';
+ if(a.totalDays===0){if(a.hours===0)return a.minutes<=1?'just now':a.minutes+' minutes ago';return a.hours===1?'1 hour ago':a.hours+' hours ago'}
+ return a.totalDays===1?'1 day ago':a.totalDays+' days ago'
+}
+function detailedAge(published){
+ const a=ageParts(published);if(!a)return 'Date unavailable';
+ const parts=[];
+ if(a.years)parts.push(a.years+' '+(a.years===1?'year':'years'));
+ if(a.months)parts.push(a.months+' '+(a.months===1?'month':'months'));
+ if(a.days)parts.push(a.days+' '+(a.days===1?'day':'days'));
+ return parts.length?parts.join(' ')+' ago':timeAgo(published)
+}
 function activity(published){if(!published)return 'unknown';const days=(Date.now()-new Date(published).getTime())/86400000;if(!Number.isFinite(days))return 'unknown';return days<=30?'active':days<=90?'recent':days<365?'inactive':days<1095?'very':'abandoned'}
 function label(s){return ({active:'Active',recent:'Recently active',inactive:'Inactive',very:'Very Inactive',abandoned:'Abandoned',unknown:'Upload status unavailable'})[s]}function badgeLabel(x){if(x.status==='unknown'||!x.published)return label(x.status);return label(x.status)+' · '+detailedAge(x.published)}
 function render(){let list=entries.slice();const f=$('activityFilter').value; if(f!=='all')list=list.filter(x=>x.status===f);const sort=$('sort').value;list.sort((a,b)=>sort==='subs'?(b.subs-a.subs):sort==='oldest'?((a.published?new Date(a.published).getTime():Infinity)-(b.published?new Date(b.published).getTime():Infinity)):((b.published?new Date(b.published).getTime():0)-(a.published?new Date(a.published).getTime():0)));$('results').innerHTML=list.map(x=>'<article class="channel"><img class="avatar" src="'+esc(x.avatar)+'" alt=""><div class="info"><div class="name">'+esc(x.title)+'</div><div class="meta">'+esc(x.id)+' · '+(x.subs?x.subs.toLocaleString()+' subscribers':'subscriber count unavailable')+'</div><span class="badge '+x.status+'">'+badgeLabel(x)+'</span>'+(x.video?'<div class="video"><img class="thumb" src="'+esc(x.video.thumb)+'" alt=""><div><a href="'+esc(x.video.link)+'" target="_blank" rel="noopener noreferrer">'+esc(x.video.title)+'</a><div class="meta">'+timeAgo(x.video.published)+'</div></div></div>':'<div class="meta">No public upload feed found.</div>')+'</div></article>').join('');if(!list.length)$('results').innerHTML='<section class="panel">No channels match this activity filter.</section>'}
