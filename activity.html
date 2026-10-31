@@ -85,8 +85,8 @@ function ageParts(published){
 }
 function timeAgo(published){
  const a=ageParts(published);if(!a)return 'Date unavailable';
- if(a.years>0)return (a.years===1?'1 year':a.years+' years')+' ago';
- if(a.months>0)return (a.months===1?'1 month':a.months+' months')+' ago';
+ if(a.years>0){const days=a.totalDays-a.years*365;return (a.years===1?'1 year':a.years+' years')+(days>0?' '+days+' '+(days===1?'day':'days'):'')+' ago'}
+ if(a.months>0)return (a.months===1?'1 month':a.months+' months')+(a.days>0?' '+a.days+' '+(a.days===1?'day':'days'):'')+' ago';
  if(a.totalDays===0){if(a.hours===0)return a.minutes<=1?'just now':a.minutes+' minutes ago';return a.hours===1?'1 hour ago':a.hours+' hours ago'}
  return a.totalDays===1?'1 day ago':a.totalDays+' days ago'
 }
