@@ -57,6 +57,19 @@ async function feed(id){
    const r=await fetch(u,{cache:'no-store'});
    if(!r.ok)throw Error('CodeTabs HTTP '+r.status);
    return parseAtom(await r.text());
+  },
+  async()=>{
+   const u='https://cors.isomorphic-git.org/'+feedUrl;
+   const r=await fetch(u,{cache:'no-store'});
+   if(!r.ok)throw Error('Isomorphic CORS HTTP '+r.status);
+   return parseAtom(await r.text());
+  },
+  async()=>{
+   const u='https://api.allorigins.win/get?url='+encodeURIComponent(feedUrl)+'&disableCache=true';
+   const r=await fetch(u,{cache:'no-store'});
+   if(!r.ok)throw Error('AllOrigins JSON HTTP '+r.status);
+   const data=await r.json();
+   return parseAtom(data.contents||'');
   }
  ];
  let lastError='No feed source responded';
@@ -111,7 +124,16 @@ function render(){let list=entries.slice();const f=$('activityFilter').value; if
 $('activityFilter').addEventListener('change',render);$('sort').addEventListener('change',render);
 function searchItems(raw){const a=raw?.list||raw?.items||raw?.results||raw?.channels||raw?.data?.list||raw?.data?.items||raw?.data?.data||raw?.data||raw?.user||[];return Array.isArray(a)?a:(a&&typeof a==='object'?Object.values(a):[])}
 function val(v){return v&&typeof v==='object'&&'count'in v?v.count:v}
-function channelInfo(c){if(Array.isArray(c)){const rawId=val(c[2])||c[2]||'';return {id:idOf(rawId),title:String(val(c[0])||'YouTube channel'),avatar:String(val(c[1])||''),handle:''}}const rawId=c?.id||c?.channelId||c?.channel_id||c?.ucid||c?.user?.[2]?.count||c?.user?.[2]||'';return {id:idOf(val(rawId)||rawId),title:String(c?.name||c?.title||c?.channelName||c?.snippet?.title||c?.user?.[0]?.count||'YouTube channel'),avatar:String(c?.image||c?.avatar||c?.thumbnail||c?.snippet?.thumbnails?.medium?.url||c?.user?.[1]?.count||''),handle:String(c?.handle||c?.customUrl||c?.username||'')}}
+function channelInfo(c){
+ const unwrap=v=>v&&typeof v==='object'&&'count'in v?v.count:v;
+ if(Array.isArray(c)){
+  const rawId=unwrap(c[2])||c[2]||'';
+  return {id:idOf(rawId)||String(rawId).trim(),title:String(unwrap(c[0])||'YouTube channel'),avatar:String(unwrap(c[1])||''),handle:''}
+ }
+ const rawId=c?.id||c?.channelId||c?.channel_id||c?.ucid||c?.channel?.id||c?.user?.[2]?.count||c?.user?.[2]||'';
+ const id=unwrap(rawId)||rawId;
+ return {id:idOf(id)||String(id).trim(),title:String(c?.name||c?.title||c?.channelName||c?.snippet?.title||c?.channel?.title||c?.user?.[0]?.count||'YouTube channel'),avatar:String(c?.image||c?.avatar||c?.thumbnail||c?.snippet?.thumbnails?.medium?.url||c?.channel?.avatar||c?.user?.[1]?.count||''),handle:String(c?.handle||c?.customUrl||c?.username||'')}
+}
 function renderMatches(items){const root=$('searchMatches');root.innerHTML='';items.forEach(x=>{const b=document.createElement('button');b.className='match';b.type='button';b.innerHTML='<img class="avatar" src="'+esc(x.avatar)+'" alt=""><div class="info"><div class="name">'+esc(x.title)+'</div><div class="meta">'+esc(x.handle||'')+' · '+esc(x.id)+'</div></div><span class="choose">Check activity →</span>';b.addEventListener('click',()=>checkActivity(x));root.append(b)})}
 async function checkActivity(ch){entries=[];$('results').innerHTML='';$('searchMatches').innerHTML='';$('status').textContent='Checking latest upload for '+ch.title+'…';try{let subs=0;try{const counter=await mix('user/'+encodeURIComponent(ch.id));const roots=[counter,counter?.data,counter?.result,counter?.channel].filter(Boolean);for(const o of roots){const v=o?.counts?.[0]?.count??o?.counts?.[0]??o?.count??o?.subscriberCount??o?.statistics?.subscriberCount;if(v!==undefined){subs=parseCount(v);break}}}catch{}let video=null,feedError='';try{video=await feed(ch.id)}catch(e){feedError=e.message||'Feed request failed'}const item={...ch,subs,video,published:video?.published||'',status:activity(video?.published||'')};entries=[item];render();$('status').textContent=video?'Activity checked for '+ch.title+'.':'Could not fetch the public upload feed for '+ch.title+': '+feedError}catch(err){$('status').textContent='Could not check activity: '+err.message}}
 $('activityFilter').addEventListener('change',render);$('sort').addEventListener('change',render);
