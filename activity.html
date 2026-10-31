@@ -8,7 +8,7 @@
 <main class="wrap"><section class="panel"><form id="searchForm" class="search"><input id="query" placeholder="Search channel name, @handle, or channel ID…" required autocomplete="off"><button type="submit">Search</button></form><div class="filters"><label>Activity filter<select id="activityFilter"><option value="all">All activity statuses</option><option value="active">Active · uploaded within 30 days</option><option value="recent">Recently active · 31–90 days</option><option value="inactive">Inactive · over 90 days</option><option value="unknown">No upload data</option></select></label><label>Sort results<select id="sort"><option value="recent">Most recently uploaded</option><option value="subs">Most subscribers</option><option value="oldest">Oldest upload</option></select></label></div><p class="note">Activity is based on a channel’s latest public upload. A channel can still be active through livestreams or community posts that aren’t reflected in its upload feed.</p></section><div id="status" class="status">Search for a channel to check its latest upload and activity status.</div><section id="results" class="results"></section></main>
 <script>
 (()=>{'use strict';
-const $=id=>document.getElementById(id), MIXERNO='https://mixerno.space/api';
+const $=id=>document.getElementById(id), MIXERNO='https://mixerno.space/api/youtube-channel-counter';
 let entries=[];
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function inputTerm(q){let s=q.trim().replace(/^https?:\/\/(www\.)?youtube\.com\//i,'');for(const p of ['channel/','user/','c/'])if(s.startsWith(p))return s.slice(p.length);return s}
