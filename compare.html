@@ -58,7 +58,7 @@ async function search(slot,q){const res=$('results'+(slot+1));res.innerHTML='';$
 function updateCompare(){const a=chosen[0],b=chosen[1],diff=$('difference');if(!a||!b){diff.classList.add('hidden');$('status').textContent='Select two channels to compare their subscriber counts.';return}diff.classList.remove('hidden');const n=Math.abs(a.count-b.count);$('diffcount').textContent=fmt(n);$('difflabel').textContent=(a.count===b.count?'Both channels have the same subscriber count':(a.count>b.count?a.title:b.title)+' has more subscribers');$('status').textContent='Comparison updates automatically about every 15 seconds.'}
 async function refresh(){for(let i=0;i<2;i++){const c=chosen[i];if(!c)continue;try{const fresh=await loadChannel(c.id,c);chosen[i]={...c,...fresh};renderSelected(i)}catch{}}updateCompare()}
 $('form1').onsubmit=e=>{e.preventDefault();search(0,$('query1').value)};$('form2').onsubmit=e=>{e.preventDefault();search(1,$('query2').value)};
-setInterval(refresh,15000);
+function scheduleRefresh(){setTimeout(async()=>{await refresh();scheduleRefresh()},3000+Math.floor(Math.random()*4001))}scheduleRefresh();
 const params=new URLSearchParams(location.search);if(params.has('a')){$('query1').value=params.get('a');search(0,params.get('a'))}if(params.has('b')){$('query2').value=params.get('b');search(1,params.get('b'))}
 })();
 </script></body></html>
