@@ -17,7 +17,26 @@ function candidates(raw){const a=raw?.list||raw?.items||raw?.results||raw?.chann
 function info(c){if(Array.isArray(c))return {title:String(c[0]?.count??c[0]??'YouTube channel'),avatar:String(c[1]?.count??c[1]??''),id:idOf(c[2]?.count??c[2])};return {title:String(c?.name||c?.title||c?.channelName||c?.snippet?.title||'YouTube channel'),avatar:String(c?.image||c?.avatar||c?.thumbnail||c?.snippet?.thumbnails?.medium?.url||''),id:idOf(c?.id||c?.channelId||c?.channel_id||c?.ucid)}}
 function parseCount(v){const s=String(v??0).replace(/,/g,'').trim(),m=s.match(/^([\d.]+)([KMB])?$/i);if(!m)return Number(v)||0;return Math.round(Number(m[1])*({K:1e3,M:1e6,B:1e9}[(m[2]||'').toUpperCase()]||1))}
 async function mix(path){const r=await fetch(MIXERNO+'/'+path+'?_='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('Mixerno returned HTTP '+r.status);return r.json()}
-async function feed(id){const u='https://www.youtube.com/feeds/videos.xml?channel_id='+encodeURIComponent(id);const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error('RSS HTTP '+r.status);const xml=new DOMParser().parseFromString(await r.text(),'text/xml');if(xml.querySelector('parsererror'))throw Error('Could not parse feed');const first=xml.querySelector('entry');if(!first)return null;const title=first.querySelector('title')?.textContent||'Latest upload';const published=first.querySelector('published')?.textContent||first.querySelector('updated')?.textContent||'';const link=first.querySelector('link[rel="alternate"]')?.getAttribute('href')||first.querySelector('link')?.getAttribute('href')||'';const thumb=first.getElementsByTagNameNS('*','thumbnail')[0]?.getAttribute('url')||'';return {title,published,link,thumb}}
+async function feed(id){
+ const u='https://www.youtube.com/feeds/videos.xml?channel_id='+encodeURIComponent(id);
+ // Try direct RSS first, then a CORS proxy if the browser blocks YouTube's feed.
+ const attempts=[
+  ()=>fetch(u,{cache:'no-store'}),
+  ()=>fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(u),{cache:'no-store'}),
+  ()=>fetch('https://corsproxy.io/?url='+encodeURIComponent(u),{cache:'no-store'})
+ ];
+ let response=null,lastError=null;
+ for(const attempt of attempts){try{const r=await attempt();if(r.ok){response=r;break}lastError=new Error('HTTP '+r.status)}catch(e){lastError=e}}
+ if(!response)throw Error('YouTube upload feed could not be reached'+(lastError?': '+lastError.message:''));
+ const xml= new DOMParser().parseFromString(await response.text(),'text/xml');
+ if(xml.querySelector('parsererror'))throw Error('Could not parse YouTube upload feed');
+ const first=xml.querySelector('entry');if(!first)return null;
+ const title=first.querySelector('title')?.textContent||'Latest upload';
+ const published=first.querySelector('published')?.textContent||first.querySelector('updated')?.textContent||'';
+ const link=first.querySelector('link[rel="alternate"]')?.getAttribute('href')||first.querySelector('link')?.getAttribute('href')||'';
+ const thumb=first.getElementsByTagNameNS('*','thumbnail')[0]?.getAttribute('url')||'';
+ return {title,published,link,thumb}
+}
 function activity(published){if(!published)return 'unknown';const days=(Date.now()-new Date(published).getTime())/86400000;if(!Number.isFinite(days))return 'unknown';return days<=30?'active':days<=90?'recent':'inactive'}
 function label(s){return ({active:'Active · within 30 days',recent:'Recently active · 31–90 days',inactive:'Inactive · over 90 days',unknown:'Upload status unavailable'})[s]}
 function render(){let list=entries.slice();const f=$('activityFilter').value; if(f!=='all')list=list.filter(x=>x.status===f);const sort=$('sort').value;list.sort((a,b)=>sort==='subs'?(b.subs-a.subs):sort==='oldest'?((a.published?new Date(a.published).getTime():Infinity)-(b.published?new Date(b.published).getTime():Infinity)):((b.published?new Date(b.published).getTime():0)-(a.published?new Date(a.published).getTime():0)));$('results').innerHTML=list.map(x=>'<article class="channel"><img class="avatar" src="'+esc(x.avatar)+'" alt=""><div class="info"><div class="name">'+esc(x.title)+'</div><div class="meta">'+esc(x.id)+' · '+(x.subs?x.subs.toLocaleString()+' subscribers':'subscriber count unavailable')+'</div><span class="badge '+x.status+'">'+label(x.status)+'</span>'+(x.video?'<div class="video"><img class="thumb" src="'+esc(x.video.thumb)+'" alt=""><div><a href="'+esc(x.video.link)+'" target="_blank" rel="noopener noreferrer">'+esc(x.video.title)+'</a><div class="meta">'+(x.video.published?new Date(x.video.published).toLocaleDateString():'Date unavailable')+'</div></div></div>':'<div class="meta">No public upload feed found.</div>')+'</div></article>').join('');if(!list.length)$('results').innerHTML='<section class="panel">No channels match this activity filter.</section>'}
