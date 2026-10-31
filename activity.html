@@ -17,39 +17,7 @@ function candidates(raw){const a=raw?.list||raw?.items||raw?.results||raw?.chann
 function info(c){if(Array.isArray(c))return {title:String(c[0]?.count??c[0]??'YouTube channel'),avatar:String(c[1]?.count??c[1]??''),id:idOf(c[2]?.count??c[2])};return {title:String(c?.name||c?.title||c?.channelName||c?.snippet?.title||'YouTube channel'),avatar:String(c?.image||c?.avatar||c?.thumbnail||c?.snippet?.thumbnails?.medium?.url||''),id:idOf(c?.id||c?.channelId||c?.channel_id||c?.ucid)}}
 function parseCount(v){const s=String(v??0).replace(/,/g,'').trim(),m=s.match(/^([\d.]+)([KMB])?$/i);if(!m)return Number(v)||0;return Math.round(Number(m[1])*({K:1e3,M:1e6,B:1e9}[(m[2]||'').toUpperCase()]||1))}
 async function mix(path){const r=await fetch(MIXERNO+'/'+path+'?_='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('Mixerno returned HTTP '+r.status);return r.json()}
-async function feed(id){
- const feedUrl='https://www.youtube.com/feeds/videos.xml?channel_id='+encodeURIComponent(id);
- // GitHub Pages cannot add CORS headers, so try several public RSS proxy routes.
- const urls=[
-  feedUrl,
-  'https://api.allorigins.win/raw?url='+encodeURIComponent(feedUrl),
-  'https://corsproxy.io/?url='+encodeURIComponent(feedUrl),
-  'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(feedUrl)
- ];
- let lastError='No feed response';
- for(const url of urls){
-  try{
-   const response=await fetch(url,{cache:'no-store'});
-   if(!response.ok){lastError='HTTP '+response.status;continue}
-   const text=await response.text();
-   if(!text||(!text.includes('<feed')&&!text.includes(':feed')&&!text.includes('<entry')&&!text.includes(':entry'))){lastError='Proxy returned non-feed content';continue}
-   const xml=new DOMParser().parseFromString(text,'application/xml');
-   if(xml.querySelector('parsererror')){lastError='Could not parse RSS XML';continue}
-   const entries=Array.from(xml.getElementsByTagNameNS('*','entry'));
-   const first=entries[0]||xml.querySelector('entry');
-   if(!first){lastError='Feed contains no public uploads';continue}
-   const get=(name)=>first.getElementsByTagNameNS('*',name)[0]?.textContent||'';
-   const title=get('title')||'Latest upload';
-   const published=get('published')||get('updated');
-   const linkNode=Array.from(first.getElementsByTagNameNS('*','link')).find(n=>!n.getAttribute('rel')||n.getAttribute('rel')==='alternate');
-   const link=linkNode?.getAttribute('href')||'';
-   const thumb=first.getElementsByTagNameNS('*','thumbnail')[0]?.getAttribute('url')||'';
-   if(!published){lastError='Upload date missing from feed';continue}
-   return {title,published,link,thumb};
-  }catch(e){lastError=e?.message||'Network/CORS error'}
- }
- throw Error('Could not retrieve YouTube upload feed: '+lastError)
-}
+async function feed(id){const u='https://www.youtube.com/feeds/videos.xml?channel_id='+encodeURIComponent(id);const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error('RSS HTTP '+r.status);const xml=new DOMParser().parseFromString(await r.text(),'text/xml');if(xml.querySelector('parsererror'))throw Error('Could not parse feed');const first=xml.querySelector('entry');if(!first)return null;const title=first.querySelector('title')?.textContent||'Latest upload';const published=first.querySelector('published')?.textContent||first.querySelector('updated')?.textContent||'';const link=first.querySelector('link[rel="alternate"]')?.getAttribute('href')||first.querySelector('link')?.getAttribute('href')||'';const thumb=first.getElementsByTagNameNS('*','thumbnail')[0]?.getAttribute('url')||'';return {title,published,link,thumb}}
 function timeAgo(published){if(!published)return 'Date unavailable';const t=new Date(published).getTime();if(!Number.isFinite(t))return 'Date unavailable';const ms=Math.max(0,Date.now()-t),days=Math.floor(ms/86400000);if(days===0){const hours=Math.floor(ms/3600000);if(hours===0){const minutes=Math.floor(ms/60000);return minutes<=1?'just now':minutes+' minutes ago'}return hours===1?'1 hour ago':hours+' hours ago'}return days===1?'1 day ago':days+' days ago'}
 function activity(published){if(!published)return 'unknown';const days=(Date.now()-new Date(published).getTime())/86400000;if(!Number.isFinite(days))return 'unknown';return days<=30?'active':days<=90?'recent':'inactive'}
 function label(s){return ({active:'Active · within 30 days',recent:'Recently active · 31–90 days',inactive:'Inactive · over 90 days',unknown:'Upload status unavailable'})[s]}
