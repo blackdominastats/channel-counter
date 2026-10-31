@@ -19,34 +19,57 @@ function parseCount(v){const s=String(v??0).replace(/,/g,'').trim(),m=s.match(/^
 async function mix(path){const r=await fetch(MIXERNO+'/'+path+'?_='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('Mixerno returned HTTP '+r.status);return r.json()}
 async function feed(id){
  const feedUrl='https://www.youtube.com/feeds/videos.xml?channel_id='+encodeURIComponent(id);
- const urls=[
-  'https://api.allorigins.win/raw?url='+encodeURIComponent(feedUrl),
-  'https://corsproxy.io/?url='+encodeURIComponent(feedUrl),
-  'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(feedUrl)
+ // RSS2JSON has browser-readable JSON output; retain proxy fallbacks for availability.
+ const attempts=[
+  async()=>{
+   const u='https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(feedUrl);
+   const r=await fetch(u,{cache:'no-store'});
+   if(!r.ok)throw Error('RSS2JSON HTTP '+r.status);
+   const data=await r.json();
+   if(data.status&&data.status!=='ok')throw Error(data.message||'RSS2JSON feed error');
+   const item=data.items?.[0];
+   if(!item)throw Error('No public uploads in feed');
+   const published=item.pubDate||item.published||'';
+   if(!published)throw Error('Upload date missing');
+   return {title:item.title||'Latest upload',published,link:item.link||'',thumb:item.thumbnail||item.enclosure?.link||''};
+  },
+  async()=>{
+   const u='https://api.allorigins.win/raw?url='+encodeURIComponent(feedUrl);
+   const r=await fetch(u,{cache:'no-store'});
+   if(!r.ok)throw Error('AllOrigins HTTP '+r.status);
+   return parseAtom(await r.text());
+  },
+  async()=>{
+   const u='https://corsproxy.io/?url='+encodeURIComponent(feedUrl);
+   const r=await fetch(u,{cache:'no-store'});
+   if(!r.ok)throw Error('CORS proxy HTTP '+r.status);
+   return parseAtom(await r.text());
+  },
+  async()=>{
+   const u='https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(feedUrl);
+   const r=await fetch(u,{cache:'no-store'});
+   if(!r.ok)throw Error('CodeTabs HTTP '+r.status);
+   return parseAtom(await r.text());
+  }
  ];
- let lastError='No proxy responded';
- for(const url of urls){
-  try{
-   const response=await fetch(url,{cache:'no-store'});
-   if(!response.ok){lastError='Proxy HTTP '+response.status;continue}
-   const body=await response.text();
-   if(!body||(!body.includes('<feed')&&!body.includes(':feed')&&!body.includes('<entry')&&!body.includes(':entry'))){lastError='Proxy response was not an Atom feed';continue}
-   const xml=new DOMParser().parseFromString(body,'application/xml');
-   if(xml.querySelector('parsererror')){lastError='Proxy returned invalid XML';continue}
-   const entries=Array.from(xml.getElementsByTagNameNS('*','entry'));
-   const first=entries[0]||xml.querySelector('entry');
-   if(!first){lastError='No public uploads in feed';continue}
-   const get=name=>first.getElementsByTagNameNS('*',name)[0]?.textContent||'';
-   const title=get('title')||'Latest upload';
-   const published=get('published')||get('updated');
-   const linkNode=Array.from(first.getElementsByTagNameNS('*','link')).find(n=>!n.getAttribute('rel')||n.getAttribute('rel')==='alternate');
-   const link=linkNode?.getAttribute('href')||'';
-   const thumb=first.getElementsByTagNameNS('*','thumbnail')[0]?.getAttribute('url')||'';
-   if(!published){lastError='Upload date missing';continue}
-   return {title,published,link,thumb};
-  }catch(e){lastError=e?.message||'Network/CORS error'}
- }
+ let lastError='No feed source responded';
+ for(const attempt of attempts){try{return await attempt()}catch(e){lastError=e?.message||'Feed request failed'}}
  throw Error(lastError)
+}
+function parseAtom(body){
+ if(!body||(!body.includes('<feed')&&!body.includes(':feed')&&!body.includes('<entry')&&!body.includes(':entry')))throw Error('Proxy returned non-feed content');
+ const xml=new DOMParser().parseFromString(body,'application/xml');
+ if(xml.querySelector('parsererror'))throw Error('Invalid RSS XML');
+ const first=Array.from(xml.getElementsByTagNameNS('*','entry'))[0]||xml.querySelector('entry');
+ if(!first)throw Error('No public uploads in feed');
+ const get=name=>first.getElementsByTagNameNS('*',name)[0]?.textContent||'';
+ const title=get('title')||'Latest upload';
+ const published=get('published')||get('updated');
+ const linkNode=Array.from(first.getElementsByTagNameNS('*','link')).find(n=>!n.getAttribute('rel')||n.getAttribute('rel')==='alternate');
+ const link=linkNode?.getAttribute('href')||'';
+ const thumb=first.getElementsByTagNameNS('*','thumbnail')[0]?.getAttribute('url')||'';
+ if(!published)throw Error('Upload date missing');
+ return {title,published,link,thumb}
 }
 function timeAgo(published){if(!published)return 'Date unavailable';const t=new Date(published).getTime();if(!Number.isFinite(t))return 'Date unavailable';const ms=Math.max(0,Date.now()-t),days=Math.floor(ms/86400000);if(days===0){const hours=Math.floor(ms/3600000);if(hours===0){const minutes=Math.floor(ms/60000);return minutes<=1?'just now':minutes+' minutes ago'}return hours===1?'1 hour ago':hours+' hours ago'}return days===1?'1 day ago':days+' days ago'}
 function activity(published){if(!published)return 'unknown';const days=(Date.now()-new Date(published).getTime())/86400000;if(!Number.isFinite(days))return 'unknown';return days<=30?'active':days<=90?'recent':'inactive'}
