@@ -107,10 +107,11 @@ async function sharedGrowthOverride(id){
  try{
   const cfg=await getJson(FIREBASE+'/growthOverrides/'+encodeURIComponent(id)+'.json?ts='+Date.now());
   if(!cfg||cfg.enabled!==true)return null;
-  const min=Math.max(0,Number(cfg.min)||0),max=Math.max(min,Number(cfg.max)||min),gain=Math.max(0,Number(cfg.gain)||0),every=Math.max(1,Number(cfg.every)||1);
+  const min=Math.max(0,Number(cfg.minGain??cfg.min)||0),max=Math.max(min,Number(cfg.maxGain??cfg.max)||min),every=Math.max(1,Number(cfg.every)||1);
   const step=(growthUnitMs[cfg.unit]||5000)*every,steps=Math.floor(Math.max(0,Date.now()-Number(cfg.startAt||Date.now()))/step);
-  const start=Math.max(min,Math.min(max,Number(cfg.startCount)||min));
-  return Math.max(min,Math.min(max,start+steps*gain));
+  let total=Math.max(0,Number(cfg.startCount)||0);const seed=Number(cfg.startAt)||1;
+  for(let i=1;i<=steps;i++){let x=(Math.imul((seed>>>0)^i,1664525)+1013904223)>>>0;x^=x>>>16;total+=min+((x>>>0)%(max-min+1));}
+  return total;
  }catch(e){return null}
 }
 function updateRate(count){
