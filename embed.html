@@ -102,6 +102,17 @@ async function sharedOverride(id){
  try{const value=await getJson(FIREBASE+'/overrides/'+encodeURIComponent(id)+'.json?ts='+Date.now());if(value!==null&&Number.isSafeInteger(Number(value))&&Number(value)>=0)return Number(value)}catch(e){}
  return null;
 }
+const growthUnitMs={seconds:1000,updates:5000,minutes:60000,hours:3600000,days:86400000};
+async function sharedGrowthOverride(id){
+ try{
+  const cfg=await getJson(FIREBASE+'/growthOverrides/'+encodeURIComponent(id)+'.json?ts='+Date.now());
+  if(!cfg||cfg.enabled!==true)return null;
+  const min=Math.max(0,Number(cfg.min)||0),max=Math.max(min,Number(cfg.max)||min),gain=Math.max(0,Number(cfg.gain)||0),every=Math.max(1,Number(cfg.every)||1);
+  const step=(growthUnitMs[cfg.unit]||5000)*every,steps=Math.floor(Math.max(0,Date.now()-Number(cfg.startAt||Date.now()))/step);
+  const start=Math.max(min,Math.min(max,Number(cfg.startCount)||min));
+  return Math.max(min,Math.min(max,start+steps*gain));
+ }catch(e){return null}
+}
 function updateRate(count){
  const now=Date.now();
  if(lastSample&&lastSample.id===channelId){
@@ -129,7 +140,8 @@ async function refresh(){
  try{
   let data;
   try{data=await nextCounts(channelId)}catch(e){data=await mixerno(channelId)}
-  const override=await sharedOverride(channelId);
+  const growth=await sharedGrowthOverride(channelId);
+  const override=growth===null?await sharedOverride(channelId):growth;
   render(data,override);
  }catch(error){
   $('status').textContent=currentCount===null?'Could not load this channel: '+error.message:'Temporarily unable to refresh; showing the last available count.';
