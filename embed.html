@@ -99,7 +99,7 @@ async function mixerno(id){
  return {count,name:String(pick(roots,['user.0.count','user.0','name','title','channelName','channel.title'],'YouTube channel')),avatar:String(pick(roots,['user.1.count','user.1','image','avatar','imageUrl','thumbnail'],''))};
 }
 async function sharedOverride(id){
- try{const value=await getJson(FIREBASE+'/overrides/'+encodeURIComponent(id)+'.json?ts='+Date.now());if(value!==null&&Number.isSafeInteger(Number(value))&&Number(value)>=0)return Number(value)}catch(e){}
+ try{const raw=await getJson(FIREBASE+'/overrides/'+encodeURIComponent(id)+'.json?ts='+Date.now());const value=Number(raw&&typeof raw==='object'?raw.value:raw);const force=!(raw&&typeof raw==='object'&&raw.force===false);if(raw!==null&&force&&Number.isSafeInteger(value)&&value>=0)return value}catch(e){}
  return null;
 }
 const growthUnitMs={seconds:1000,updates:5000,minutes:60000,hours:3600000,days:86400000};
