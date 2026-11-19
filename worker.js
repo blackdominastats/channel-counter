@@ -16,7 +16,7 @@ export default {
 
     // No-key channel search proxy: preserves the site's existing Mixerno search.
     // The browser calls this Worker instead of contacting Mixerno cross-origin.
-    const searchMatch = url.pathname.match(/^\\/api\\/youtube\\/search\\/(.+)$/);
+    const searchMatch = url.pathname.match(/^\/api\/youtube\/search\/(.+)$/);
     if (searchMatch) {
       let term;
       try { term = decodeURIComponent(searchMatch[1]); }
