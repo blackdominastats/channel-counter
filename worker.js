@@ -14,6 +14,31 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
     if (request.method !== "GET") return json({ success: false, error: "Use GET." }, 405, cors);
 
+    // No-key channel search proxy: preserves the site's existing Mixerno search.
+    // The browser calls this Worker instead of contacting Mixerno cross-origin.
+    const searchMatch = url.pathname.match(/^\\/api\\/youtube\\/search\\/(.+)$/);
+    if (searchMatch) {
+      let term;
+      try { term = decodeURIComponent(searchMatch[1]); }
+      catch { return json({ success: false, error: "Invalid search query." }, 400, cors); }
+      try {
+        const upstream = await fetch(MIXERNO + "/search/" + encodeURIComponent(term), {
+          headers: { "Accept": "application/json" }
+        });
+        const body = await upstream.text();
+        return new Response(body, {
+          status: upstream.status,
+          headers: {
+            "Content-Type": upstream.headers.get("Content-Type") || "application/json; charset=utf-8",
+            "Cache-Control": "no-store",
+            ...cors
+          }
+        });
+      } catch (error) {
+        return json({ success: false, error: "Mixerno search is temporarily unavailable.", details: String(error) }, 502, cors);
+      }
+    }
+
     const match = url.pathname.match(/^\/api\/youtube\/channel\/([A-Za-z0-9_-]+)\/?$/);
     if (!match) return json({
       success: true,
