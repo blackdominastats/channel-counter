@@ -50,24 +50,28 @@ export default {
     const id = match[1];
     if (!/^UC[A-Za-z0-9_-]{20,}$/.test(id)) return json({ success: false, error: "Provide a valid YouTube channel ID." }, 400, cors);
 
+    // Fetch public channel metadata from Mixerno. Its user endpoint supplies
+    // user[0] = channel name and user[1] = avatar URL.
+    const metadata = await getChannelMetadata(id);
+
     // Admin-configured shared override/growth always wins over live data.
     const custom = await getCustom(id);
     if (custom !== null) {
-      return json({ success: true, channelId: id, count: custom, updatedAt: new Date().toISOString() }, 200, cors);
+      return json({ success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: custom, updatedAt: new Date().toISOString() }, 200, cors);
     }
 
     // Prefer an available exact NextCounts value; otherwise use Mixerno estimate.
     const exact = await getNextCounts(id);
     if (exact !== null) {
-      return json({ success: true, channelId: id, count: exact, updatedAt: new Date().toISOString() }, 200, cors);
+      return json({ success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: exact, updatedAt: new Date().toISOString() }, 200, cors);
     }
 
     const estimated = await getEstimated(id);
     if (estimated !== null) {
-      return json({ success: true, channelId: id, count: estimated, updatedAt: new Date().toISOString() }, 200, cors);
+      return json({ success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: estimated, updatedAt: new Date().toISOString() }, 200, cors);
     }
 
-    return json({ success: false, channelId: id, count: null, error: "No subscriber count is currently available for this channel." }, 502, cors);
+    return json({ success: false, channelId: id, name: metadata.name, avatar: metadata.avatar, count: null, error: "No subscriber count is currently available for this channel." }, 502, cors);
   }
 };
 
@@ -76,6 +80,18 @@ function json(value, status = 200, cors = {}) {
     status,
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...cors }
   });
+}
+
+async function getChannelMetadata(id) {
+  try {
+    const data = await fetchJson(MIXERNO + "/user/" + encodeURIComponent(id));
+    const roots = [data, data?.data, data?.result, data?.channel].filter(Boolean);
+    const name = first(roots, ["user.0.count", "user.0", "name", "title", "channelName", "channel.title", "snippet.title"]);
+    const avatar = first(roots, ["user.1.count", "user.1", "image", "avatar", "imageUrl", "thumbnail", "snippet.thumbnails.high.url", "snippet.thumbnails.medium.url"]);
+    return { name: name == null ? null : String(name), avatar: avatar == null ? null : String(avatar) };
+  } catch {
+    return { name: null, avatar: null };
+  }
 }
 
 async function getEstimated(id) {
