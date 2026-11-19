@@ -1,37 +1,32 @@
 # Channel Counter API
 
-A public, read-only JSON API for external websites. This Worker is separate from the Channel Counter website and does not change its existing counter behavior.
+A public, read-only JSON endpoint for other websites. It returns **one subscriber count**, not a list of selectable data sources.
 
-## Deploy
+## Endpoint
 
-1. In Cloudflare, create a Worker named `channel-counter-api`.
-2. Paste `worker.js` into the Worker editor and deploy, or connect this repository with Wrangler.
-3. The included `wrangler.toml` provides the Worker name and entry point.
-4. Cloudflare assigns a URL such as `https://channel-counter-api.<your-subdomain>.workers.dev`.
+`GET /api/youtube/channel/UC...`
 
-## Endpoints
-
-- `GET /api/youtube/channel/UC...` — effective count and all available source values.
-- `GET /api/youtube/channel/UC...?source=estimated` — Mixerno.Space estimate.
-- `GET /api/youtube/channel/UC...?source=nextcounts` — exact NextCounts Studio count, when publicly published.
-- `GET /api/youtube/channel/UC...?source=custom` — forced shared override or active custom growth count.
-
-No API key is required for public reads. CORS is enabled for browser-based sites.
-
-## Response example
+Example response:
 
 ```json
 {
   "success": true,
   "channelId": "UC...",
   "count": 123456,
-  "source": "nextcounts",
-  "observedAt": "2026-11-19T12:00:00.000Z",
-  "data": { "estimated": 123400, "nextcounts": 123456, "custom": null },
-  "availability": { "estimated": true, "nextcounts": true, "custom": false }
+  "updatedAt": "2026-11-19T12:00:00.000Z"
 }
 ```
 
-The default source priority matches the website: forced shared Firebase override, active Firebase growth override, NextCounts, then Mixerno.Space. Browser-local overrides are not exposed because they exist only in an individual visitor's local storage.
+## How the count is chosen
 
-The API is read-only and does not expose admin writes or Firebase credentials. Default responses are cached for up to five seconds. Custom count is null when no shared override or growth override is active.
+1. If you set a shared admin override for the channel in Channel Counter, the API returns that override.
+2. Otherwise, it uses the exact NextCounts count when the channel is published in NextCounts Studio.
+3. If NextCounts does not have a count for the channel, it falls back to the Mixerno.Space estimate.
+
+An enabled shared custom-growth setting is also treated as an admin override. Browser-local overrides are not available to the public API because they are stored only in an individual browser's local storage; use the shared admin override setting for a value that external websites should receive.
+
+No API key is required for public reads. CORS is enabled. Responses are not cached so admin changes can be reflected promptly. The endpoint is read-only and does not expose admin write access or Firebase credentials.
+
+## Deploy
+
+Deploy `worker.js` as a Cloudflare Worker. The included `wrangler.toml` contains the Worker name and entry point. Cloudflare will provide a `workers.dev` URL; use that URL as the base for the endpoint.
