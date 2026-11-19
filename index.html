@@ -104,7 +104,7 @@ async function search(q){$('status').textContent='Searching Mixerno.Space…';$(
    const raw=await mixerno('user/'+encodeURIComponent(term));items=[normalizeCounter(raw,term)];
  }else{
    // Search first for names/handles/YouTube channel URLs. The counter endpoint itself expects a channel ID.
-   const searchRaw=await mixerno('search/'+encodeURIComponent(term.replace(/^@/,'')));
+   const searchUrl='https://channel-counter-api.jameshguido.workers.dev/api/youtube/search/'+encodeURIComponent(term.replace(/^@/,''));const searchResponse=await fetch(searchUrl,{method:'GET',cache:'no-store',headers:{'Accept':'application/json'}});if(!searchResponse.ok){let detail='';try{const errorBody=await searchResponse.json();detail=errorBody.details||errorBody.error||''}catch{}throw Error('Mixerno search proxy HTTP '+searchResponse.status+(detail?': '+detail:''));}const searchRaw=await searchResponse.json();if(searchRaw?.error)throw Error(typeof searchRaw.error==='string'?searchRaw.error:'Mixerno search failed.');
    const candidates=findSearchItems(searchRaw);const seen=new Set();
    for(const c of candidates.slice(0,15)){
      const info=candidateInfo(c);info.id=extractChannelId(info.id);if(!info.id||seen.has(info.id))continue;seen.add(info.id);
