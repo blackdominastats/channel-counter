@@ -3,7 +3,7 @@ const NEXTCOUNTS = "https://api.nextcounts.com";
 const FIREBASE = "https://channel-counter-d7a71-default-rtdb.firebaseio.com";
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     const url = new URL(request.url);
     const cors = {
       "Access-Control-Allow-Origin": "*",
@@ -60,7 +60,8 @@ export default {
       return json({ success: false, error: "Provide one or more valid YouTube channel IDs (maximum 50)." }, 400, cors);
     }
 
-    const results = await Promise.all(ids.map(getChannelResult));
+    const youtube = await getYoutubeChannels(ids, env.YOUTUBE_API_KEY);
+    const results = await Promise.all(ids.map(id => getChannelResult(id, youtube.get(id))));
     if (ids.length === 1) return json(results[0], 200, cors);
     return json({ success: true, data: results, updatedAt: new Date().toISOString() }, 200, cors);
   }
@@ -73,26 +74,110 @@ function json(value, status = 200, cors = {}) {
   });
 }
 
-async function getChannelResult(id) {
-  const metadata = await getChannelMetadata(id);
-
-  // Shared admin overrides take priority over exact and estimated counts.
-  const custom = await getCustom(id);
-  if (custom !== null) {
-    return { success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: custom, updatedAt: new Date().toISOString() };
+async function getChannelResult(id, youtube) {
+  const override = await getForcedOverride(id);
+  if (override !== null) {
+    return { success: true, channelId: id, name: youtube?.name || null, avatar: youtube?.avatar || null, count: override, source: "admin-override", updatedAt: new Date().toISOString() };
   }
 
-  const exact = await getNextCounts(id);
-  if (exact !== null) {
-    return { success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: exact, updatedAt: new Date().toISOString() };
+  if (!youtube || !Number.isSafeInteger(youtube.count)) {
+    return { success: false, channelId: id, name: youtube?.name || null, avatar: youtube?.avatar || null, count: null, error: "YouTube Data API count unavailable. Check the Worker YOUTUBE_API_KEY secret and channel ID." };
   }
 
-  const estimated = await getEstimated(id);
-  if (estimated !== null) {
-    return { success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: estimated, updatedAt: new Date().toISOString() };
+  const bucket = getYoutubeBucket(youtube.count);
+  const growth = await getGrowthConfig(id);
+  const rawEstimate = growth?.enabled === true ? calculateGrowth(growth) : bucket.minimum;
+  const count = Math.min(bucket.maximum, Math.max(bucket.minimum, Math.round(rawEstimate)));
+
+  return {
+    success: true,
+    channelId: id,
+    name: youtube.name,
+    avatar: youtube.avatar,
+    count,
+    youtubeCount: bucket.minimum,
+    bucketMinimum: bucket.minimum,
+    bucketMaximum: bucket.maximum,
+    source: growth?.enabled === true ? "custom-time-estimate" : "youtube-api",
+    updatedAt: new Date().toISOString()
+  };
+}
+
+// YouTube's public subscriberCount is rounded down to three significant figures.
+// The returned value is therefore the lower edge of the only safe estimation bucket.
+function getYoutubeBucket(value) {
+  const count = Math.max(0, Math.floor(Number(value) || 0));
+  if (count <= 1000) return { minimum: count, maximum: count };
+  const magnitude = Math.floor(Math.log10(count));
+  const step = Math.pow(10, magnitude - 2);
+  const minimum = Math.floor(count / step) * step;
+  return { minimum, maximum: minimum + step - 1 };
+}
+
+// Fetch all requested channels in one YouTube API request (up to 50 IDs).
+// Cache for 30 seconds to avoid consuming quota on every counter refresh.
+async function getYoutubeChannels(ids, apiKey) {
+  const output = new Map();
+  if (!apiKey) return output;
+
+  const cache = caches.default;
+  const cacheUrl = "https://youtube-api-cache.invalid/v1/channels/" + ids.slice().sort().join(",");
+  const cacheKey = new Request(cacheUrl);
+  let payload = null;
+
+  try {
+    const cached = await cache.match(cacheKey);
+    if (cached) payload = await cached.json();
+  } catch {}
+
+  if (!payload) {
+    try {
+      const endpoint = new URL("https://www.googleapis.com/youtube/v3/channels");
+      endpoint.searchParams.set("part", "snippet,statistics");
+      endpoint.searchParams.set("id", ids.join(","));
+      endpoint.searchParams.set("key", apiKey);
+      const response = await fetch(endpoint.toString(), { headers: { "Accept": "application/json" } });
+      if (!response.ok) return output;
+      payload = await response.json();
+      try {
+        await cache.put(cacheKey, new Response(JSON.stringify(payload), {
+          headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=30" }
+        }));
+      } catch {}
+    } catch {
+      return output;
+    }
   }
 
-  return { success: false, channelId: id, name: metadata.name, avatar: metadata.avatar, count: null, error: "No subscriber count is currently available for this channel." };
+  for (const item of payload?.items || []) {
+    const id = item?.id;
+    const raw = item?.statistics?.subscriberCount;
+    const count = Number(raw);
+    if (!id || item?.statistics?.hiddenSubscriberCount || raw == null || !Number.isSafeInteger(count)) continue;
+    const thumbs = item.snippet?.thumbnails || {};
+    output.set(id, {
+      count,
+      name: item.snippet?.title || null,
+      avatar: thumbs.high?.url || thumbs.medium?.url || thumbs.default?.url || null
+    });
+  }
+  return output;
+}
+
+async function getForcedOverride(id) {
+  try {
+    const override = await fetchJson(FIREBASE + "/overrides/" + encodeURIComponent(id) + ".json");
+    if (override == null) return null;
+    const value = Number(typeof override === "object" ? override.value : override);
+    const force = !(override && typeof override === "object" && override.force === false);
+    return Number.isSafeInteger(value) && value >= 0 && force ? value : null;
+  } catch { return null; }
+}
+
+async function getGrowthConfig(id) {
+  try {
+    return await fetchJson(FIREBASE + "/growthOverrides/" + encodeURIComponent(id) + ".json");
+  } catch { return null; }
 }
 
 async function getChannelMetadata(id) {
@@ -128,25 +213,6 @@ async function getNextCounts(id) {
     const raw = result.data?.subscribers ?? result.data?.subscriberCount ?? result.data?.statistics?.subscriberCount;
     const count = Number(raw);
     return raw != null && raw !== "" && Number.isSafeInteger(count) && count >= 0 ? count : null;
-  } catch { return null; }
-}
-
-async function getCustom(id) {
-  try {
-    const [override, growth] = await Promise.all([
-      fetchJson(FIREBASE + "/overrides/" + encodeURIComponent(id) + ".json"),
-      fetchJson(FIREBASE + "/growthOverrides/" + encodeURIComponent(id) + ".json")
-    ]);
-    if (override != null) {
-      const value = Number(typeof override === "object" ? override.value : override);
-      const force = !(override && typeof override === "object" && override.force === false);
-      if (Number.isSafeInteger(value) && value >= 0 && force) return value;
-    }
-    if (growth?.enabled === true) {
-      const value = calculateGrowth(growth);
-      if (Number.isSafeInteger(value) && value >= 0) return value;
-    }
-    return null;
   } catch { return null; }
 }
 
