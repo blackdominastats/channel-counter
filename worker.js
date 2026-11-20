@@ -1,5 +1,4 @@
 const MIXERNO = "https://mixerno.space/api/youtube-channel-counter";
-const NEXTCOUNTS = "https://api.nextcounts.com";
 const FIREBASE = "https://channel-counter-d7a71-default-rtdb.firebaseio.com";
 
 export default {
@@ -86,7 +85,7 @@ async function getChannelResult(id, youtube) {
 
   const bucket = getYoutubeBucket(youtube.count);
   const growth = await getGrowthConfig(id);
-  const rawEstimate = growth?.enabled === true ? calculateGrowth(growth) : bucket.minimum;
+  const rawEstimate = growth?.enabled === true ? calculateGrowth({ ...growth, startCount: bucket.minimum }) : bucket.minimum;
   const count = Math.min(bucket.maximum, Math.max(bucket.minimum, Math.round(rawEstimate)));
 
   return {
@@ -180,42 +179,6 @@ async function getGrowthConfig(id) {
   } catch { return null; }
 }
 
-async function getChannelMetadata(id) {
-  try {
-    const data = await fetchJson(MIXERNO + "/user/" + encodeURIComponent(id));
-    const roots = [data, data?.data, data?.result, data?.channel].filter(Boolean);
-    const name = first(roots, ["user.0.count", "user.0", "name", "title", "channelName", "channel.title", "snippet.title"]);
-    const avatar = first(roots, ["user.1.count", "user.1", "image", "avatar", "imageUrl", "thumbnail", "snippet.thumbnails.high.url", "snippet.thumbnails.medium.url"]);
-    return { name: name == null ? null : String(name), avatar: avatar == null ? null : String(avatar) };
-  } catch {
-    return { name: null, avatar: null };
-  }
-}
-
-async function getEstimated(id) {
-  try {
-    const data = await fetchJson(MIXERNO + "/user/" + encodeURIComponent(id));
-    const roots = [data, data?.data, data?.result, data?.channel].filter(Boolean);
-    const raw = first(roots, ["counts.0.count", "counts.0", "count", "subscriberCount", "estimatedSubscribers", "estimatedSubscriberCount", "statistics.subscriberCount"]);
-    const count = parseCount(raw);
-    return raw != null && Number.isSafeInteger(count) && count >= 0 ? count : null;
-  } catch { return null; }
-}
-
-async function getNextCounts(id) {
-  try {
-    const directory = await fetchJson(NEXTCOUNTS + "/api/youtube/studio/channels");
-    if (!directory?.success || !Array.isArray(directory.data)) return null;
-    const entry = directory.data.find(item => String(item.id) === id);
-    if (!entry || entry.countsAvailable === false) return null;
-    const result = await fetchJson(NEXTCOUNTS + "/api/youtube/studio/channel/" + encodeURIComponent(id) + "/realtime");
-    if (!result?.success) return null;
-    const raw = result.data?.subscribers ?? result.data?.subscriberCount ?? result.data?.statistics?.subscriberCount;
-    const count = Number(raw);
-    return raw != null && raw !== "" && Number.isSafeInteger(count) && count >= 0 ? count : null;
-  } catch { return null; }
-}
-
 function calculateGrowth(cfg, now = Date.now()) {
   const min = Math.max(0, Number(cfg.min) || 0), max = Math.max(min, Number(cfg.max) || min);
   const every = Math.max(1, Number(cfg.every) || 1);
@@ -235,19 +198,4 @@ async function fetchJson(url) {
   const response = await fetch(url, { headers: { "Accept": "application/json" } });
   if (!response.ok) throw new Error("HTTP " + response.status);
   return response.json();
-}
-function atPath(obj, path) { return path.split(".").reduce((value, key) => value == null ? undefined : value[key], obj); }
-function first(objects, paths) {
-  for (const object of objects) for (const path of paths) {
-    const value = atPath(object, path);
-    if (value !== undefined && value !== null && value !== "") return value && typeof value === "object" && "count" in value ? value.count : value;
-  }
-  return null;
-}
-function parseCount(value) {
-  if (typeof value === "number") return value;
-  if (value == null) return NaN;
-  const match = String(value).trim().replace(/,/g, "").match(/^([\d.]+)([KMB])?$/i);
-  if (!match) return NaN;
-  return Math.round(Number(match[1]) * ({ K: 1e3, M: 1e6, B: 1e9 }[(match[2] || "").toUpperCase()] || 1));
 }
