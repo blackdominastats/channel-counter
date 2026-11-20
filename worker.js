@@ -1,8 +1,9 @@
 const MIXERNO = "https://mixerno.space/api/youtube-channel-counter";
+const NEXTCOUNTS = "https://api.nextcounts.com";
 const FIREBASE = "https://channel-counter-d7a71-default-rtdb.firebaseio.com";
 
 export default {
-  async fetch(request, env) {
+  async fetch(request) {
     const url = new URL(request.url);
     const cors = {
       "Access-Control-Allow-Origin": "*",
@@ -59,8 +60,7 @@ export default {
       return json({ success: false, error: "Provide one or more valid YouTube channel IDs (maximum 50)." }, 400, cors);
     }
 
-    const youtube = await getYoutubeChannels(ids, env.YOUTUBE_API_KEY);
-    const results = await Promise.all(ids.map(id => getChannelResult(id, youtube.get(id))));
+    const results = await Promise.all(ids.map(getChannelResult));
     if (ids.length === 1) return json(results[0], 200, cors);
     return json({ success: true, data: results, updatedAt: new Date().toISOString() }, 200, cors);
   }
@@ -73,109 +73,80 @@ function json(value, status = 200, cors = {}) {
   });
 }
 
-async function getChannelResult(id, youtube) {
-  const override = await getForcedOverride(id);
-  if (override !== null) {
-    return { success: true, channelId: id, name: youtube?.name || null, avatar: youtube?.avatar || null, count: override, source: "admin-override", updatedAt: new Date().toISOString() };
+async function getChannelResult(id) {
+  const metadata = await getChannelMetadata(id);
+
+  // Shared admin overrides take priority over exact and estimated counts.
+  const custom = await getCustom(id);
+  if (custom !== null) {
+    return { success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: custom, updatedAt: new Date().toISOString() };
   }
 
-  if (!youtube || !Number.isSafeInteger(youtube.count)) {
-    return { success: false, channelId: id, name: youtube?.name || null, avatar: youtube?.avatar || null, count: null, error: "YouTube Data API count unavailable. Check the Worker YOUTUBE_API_KEY secret and channel ID." };
+  const exact = await getNextCounts(id);
+  if (exact !== null) {
+    return { success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: exact, updatedAt: new Date().toISOString() };
   }
 
-  const bucket = getYoutubeBucket(youtube.count);
-  const growth = await getGrowthConfig(id);
-  const rawEstimate = growth?.enabled === true ? calculateGrowth({ ...growth, startCount: bucket.minimum }) : bucket.minimum;
-  const count = Math.min(bucket.maximum, Math.max(bucket.minimum, Math.round(rawEstimate)));
+  const estimated = await getEstimated(id);
+  if (estimated !== null) {
+    return { success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: estimated, updatedAt: new Date().toISOString() };
+  }
 
-  return {
-    success: true,
-    channelId: id,
-    name: youtube.name,
-    avatar: youtube.avatar,
-    count,
-    youtubeCount: bucket.minimum,
-    bucketMinimum: bucket.minimum,
-    bucketMaximum: bucket.maximum,
-    source: growth?.enabled === true ? "custom-time-estimate" : "youtube-api",
-    updatedAt: new Date().toISOString()
-  };
+  return { success: false, channelId: id, name: metadata.name, avatar: metadata.avatar, count: null, error: "No subscriber count is currently available for this channel." };
 }
 
-// YouTube's public subscriberCount is rounded down to three significant figures.
-// The returned value is therefore the lower edge of the only safe estimation bucket.
-function getYoutubeBucket(value) {
-  const count = Math.max(0, Math.floor(Number(value) || 0));
-  if (count <= 1000) return { minimum: count, maximum: count };
-  const magnitude = Math.floor(Math.log10(count));
-  const step = Math.pow(10, magnitude - 2);
-  const minimum = Math.floor(count / step) * step;
-  return { minimum, maximum: minimum + step - 1 };
-}
-
-// Fetch all requested channels in one YouTube API request (up to 50 IDs).
-// Cache for 30 seconds to avoid consuming quota on every counter refresh.
-async function getYoutubeChannels(ids, apiKey) {
-  const output = new Map();
-  if (!apiKey) return output;
-
-  const cache = caches.default;
-  const cacheUrl = "https://youtube-api-cache.invalid/v1/channels/" + ids.slice().sort().join(",");
-  const cacheKey = new Request(cacheUrl);
-  let payload = null;
-
+async function getChannelMetadata(id) {
   try {
-    const cached = await cache.match(cacheKey);
-    if (cached) payload = await cached.json();
-  } catch {}
-
-  if (!payload) {
-    try {
-      const endpoint = new URL("https://www.googleapis.com/youtube/v3/channels");
-      endpoint.searchParams.set("part", "snippet,statistics");
-      endpoint.searchParams.set("id", ids.join(","));
-      endpoint.searchParams.set("key", apiKey);
-      const response = await fetch(endpoint.toString(), { headers: { "Accept": "application/json" } });
-      if (!response.ok) return output;
-      payload = await response.json();
-      try {
-        await cache.put(cacheKey, new Response(JSON.stringify(payload), {
-          headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=30" }
-        }));
-      } catch {}
-    } catch {
-      return output;
-    }
+    const data = await fetchJson(MIXERNO + "/user/" + encodeURIComponent(id));
+    const roots = [data, data?.data, data?.result, data?.channel].filter(Boolean);
+    const name = first(roots, ["user.0.count", "user.0", "name", "title", "channelName", "channel.title", "snippet.title"]);
+    const avatar = first(roots, ["user.1.count", "user.1", "image", "avatar", "imageUrl", "thumbnail", "snippet.thumbnails.high.url", "snippet.thumbnails.medium.url"]);
+    return { name: name == null ? null : String(name), avatar: avatar == null ? null : String(avatar) };
+  } catch {
+    return { name: null, avatar: null };
   }
-
-  for (const item of payload?.items || []) {
-    const id = item?.id;
-    const raw = item?.statistics?.subscriberCount;
-    const count = Number(raw);
-    if (!id || item?.statistics?.hiddenSubscriberCount || raw == null || !Number.isSafeInteger(count)) continue;
-    const thumbs = item.snippet?.thumbnails || {};
-    output.set(id, {
-      count,
-      name: item.snippet?.title || null,
-      avatar: thumbs.high?.url || thumbs.medium?.url || thumbs.default?.url || null
-    });
-  }
-  return output;
 }
 
-async function getForcedOverride(id) {
+async function getEstimated(id) {
   try {
-    const override = await fetchJson(FIREBASE + "/overrides/" + encodeURIComponent(id) + ".json");
-    if (override == null) return null;
-    const value = Number(typeof override === "object" ? override.value : override);
-    const force = !(override && typeof override === "object" && override.force === false);
-    return Number.isSafeInteger(value) && value >= 0 && force ? value : null;
+    const data = await fetchJson(MIXERNO + "/user/" + encodeURIComponent(id));
+    const roots = [data, data?.data, data?.result, data?.channel].filter(Boolean);
+    const raw = first(roots, ["counts.0.count", "counts.0", "count", "subscriberCount", "estimatedSubscribers", "estimatedSubscriberCount", "statistics.subscriberCount"]);
+    const count = parseCount(raw);
+    return raw != null && Number.isSafeInteger(count) && count >= 0 ? count : null;
   } catch { return null; }
 }
 
-async function getGrowthConfig(id) {
+async function getNextCounts(id) {
   try {
-    return await fetchJson(FIREBASE + "/growthOverrides/" + encodeURIComponent(id) + ".json");
+    const directory = await fetchJson(NEXTCOUNTS + "/api/youtube/studio/channels");
+    if (!directory?.success || !Array.isArray(directory.data)) return null;
+    const entry = directory.data.find(item => String(item.id) === id);
+    if (!entry || entry.countsAvailable === false) return null;
+    const result = await fetchJson(NEXTCOUNTS + "/api/youtube/studio/channel/" + encodeURIComponent(id) + "/realtime");
+    if (!result?.success) return null;
+    const raw = result.data?.subscribers ?? result.data?.subscriberCount ?? result.data?.statistics?.subscriberCount;
+    const count = Number(raw);
+    return raw != null && raw !== "" && Number.isSafeInteger(count) && count >= 0 ? count : null;
+  } catch { return null; }
+}
+
+async function getCustom(id) {
+  try {
+    const [override, growth] = await Promise.all([
+      fetchJson(FIREBASE + "/overrides/" + encodeURIComponent(id) + ".json"),
+      fetchJson(FIREBASE + "/growthOverrides/" + encodeURIComponent(id) + ".json")
+    ]);
+    if (override != null) {
+      const value = Number(typeof override === "object" ? override.value : override);
+      const force = !(override && typeof override === "object" && override.force === false);
+      if (Number.isSafeInteger(value) && value >= 0 && force) return value;
+    }
+    if (growth?.enabled === true) {
+      const value = calculateGrowth(growth);
+      if (Number.isSafeInteger(value) && value >= 0) return value;
+    }
+    return null;
   } catch { return null; }
 }
 
@@ -198,4 +169,19 @@ async function fetchJson(url) {
   const response = await fetch(url, { headers: { "Accept": "application/json" } });
   if (!response.ok) throw new Error("HTTP " + response.status);
   return response.json();
+}
+function atPath(obj, path) { return path.split(".").reduce((value, key) => value == null ? undefined : value[key], obj); }
+function first(objects, paths) {
+  for (const object of objects) for (const path of paths) {
+    const value = atPath(object, path);
+    if (value !== undefined && value !== null && value !== "") return value && typeof value === "object" && "count" in value ? value.count : value;
+  }
+  return null;
+}
+function parseCount(value) {
+  if (typeof value === "number") return value;
+  if (value == null) return NaN;
+  const match = String(value).trim().replace(/,/g, "").match(/^([\d.]+)([KMB])?$/i);
+  if (!match) return NaN;
+  return Math.round(Number(match[1]) * ({ K: 1e3, M: 1e6, B: 1e9 }[(match[2] || "").toUpperCase()] || 1));
 }
