@@ -39,39 +39,30 @@ export default {
       }
     }
 
-    const match = url.pathname.match(/^\/api\/youtube\/channel\/([A-Za-z0-9_-]+)\/?$/);
-    if (!match) return json({
+    // Supports both one channel ID and the comma-separated {{channels}} token
+    // used by the Top 50 custom API importer.
+    const channelMatch = url.pathname.match(/^\/api\/youtube\/channel\/(.+)\/?$/);
+    if (!channelMatch) return json({
       success: true,
       name: "Channel Counter API",
       endpoint: "/api/youtube/channel/:channelId",
-      description: "Returns one current subscriber count. Shared admin overrides take priority; otherwise NextCounts is used when available, with Mixerno estimates as fallback."
+      batchEndpoint: "/api/youtube/channel/{{channels}}",
+      description: "Returns channel details and subscriber counts. For multiple IDs, returns { success: true, data: [...] }."
     }, 200, cors);
 
-    const id = match[1];
-    if (!/^UC[A-Za-z0-9_-]{20,}$/.test(id)) return json({ success: false, error: "Provide a valid YouTube channel ID." }, 400, cors);
-
-    // Fetch public channel metadata from Mixerno. Its user endpoint supplies
-    // user[0] = channel name and user[1] = avatar URL.
-    const metadata = await getChannelMetadata(id);
-
-    // Admin-configured shared override/growth always wins over live data.
-    const custom = await getCustom(id);
-    if (custom !== null) {
-      return json({ success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: custom, updatedAt: new Date().toISOString() }, 200, cors);
+    let ids;
+    try {
+      ids = decodeURIComponent(channelMatch[1]).split(/[;,\s]+/).filter(Boolean);
+    } catch {
+      return json({ success: false, error: "Invalid channel ID list." }, 400, cors);
+    }
+    if (!ids.length || ids.length > 50 || ids.some(id => !/^UC[A-Za-z0-9_-]{20,}$/.test(id))) {
+      return json({ success: false, error: "Provide one or more valid YouTube channel IDs (maximum 50)." }, 400, cors);
     }
 
-    // Prefer an available exact NextCounts value; otherwise use Mixerno estimate.
-    const exact = await getNextCounts(id);
-    if (exact !== null) {
-      return json({ success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: exact, updatedAt: new Date().toISOString() }, 200, cors);
-    }
-
-    const estimated = await getEstimated(id);
-    if (estimated !== null) {
-      return json({ success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: estimated, updatedAt: new Date().toISOString() }, 200, cors);
-    }
-
-    return json({ success: false, channelId: id, name: metadata.name, avatar: metadata.avatar, count: null, error: "No subscriber count is currently available for this channel." }, 502, cors);
+    const results = await Promise.all(ids.map(getChannelResult));
+    if (ids.length === 1) return json(results[0], 200, cors);
+    return json({ success: true, data: results, updatedAt: new Date().toISOString() }, 200, cors);
   }
 };
 
@@ -80,6 +71,28 @@ function json(value, status = 200, cors = {}) {
     status,
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...cors }
   });
+}
+
+async function getChannelResult(id) {
+  const metadata = await getChannelMetadata(id);
+
+  // Shared admin overrides take priority over exact and estimated counts.
+  const custom = await getCustom(id);
+  if (custom !== null) {
+    return { success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: custom, updatedAt: new Date().toISOString() };
+  }
+
+  const exact = await getNextCounts(id);
+  if (exact !== null) {
+    return { success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: exact, updatedAt: new Date().toISOString() };
+  }
+
+  const estimated = await getEstimated(id);
+  if (estimated !== null) {
+    return { success: true, channelId: id, name: metadata.name, avatar: metadata.avatar, count: estimated, updatedAt: new Date().toISOString() };
+  }
+
+  return { success: false, channelId: id, name: metadata.name, avatar: metadata.avatar, count: null, error: "No subscriber count is currently available for this channel." };
 }
 
 async function getChannelMetadata(id) {
